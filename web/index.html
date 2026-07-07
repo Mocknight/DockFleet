@@ -119,6 +119,21 @@
     background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
     padding: 14px 16px;
   }
+  .server-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; margin-bottom: 20px; }
+  .sg-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 14px 16px; cursor: pointer; transition: border-color .15s, background .15s; }
+  .sg-card:hover { border-color: var(--accent2); background: #1a212e; }
+  .sg-top { display: flex; align-items: center; gap: 8px; margin-bottom: 3px; }
+  .sg-name { font-weight: 700; font-size: 15px; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sg-group { font-size: 10px; text-transform: uppercase; color: var(--muted); background: var(--bg3);
+    border: 1px solid var(--border); border-radius: 20px; padding: 1px 8px; }
+  .sg-meta { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+  .sg-bars { display: flex; gap: 10px; margin-bottom: 10px; }
+  .sg-bar { flex: 1; }
+  .sg-bar .lab { font-size: 10px; color: var(--muted); display: flex; justify-content: space-between; margin-bottom: 3px; }
+  .sg-stats { display: flex; gap: 8px; flex-wrap: wrap; }
+  .sg-pill { font-size: 11px; padding: 3px 9px; border-radius: 20px; background: var(--bg3); border: 1px solid var(--border); }
+  .sg-pill.green { color: var(--green); } .sg-pill.yellow { color: var(--yellow); } .sg-pill.red { color: var(--red); }
   .card.clickable { cursor: pointer; transition: border-color .15s, background .15s; }
   .card.clickable:hover { border-color: var(--accent2); background: #1a212e; }
   .card .label { font-size: 12px; color: var(--muted); }
@@ -151,12 +166,13 @@
   .chip .via { color: var(--accent); }
   .chip .proto { color: var(--muted); }
   .chip.host { border-style: dashed; }
-  .sys-ig { display: flex; gap: 28px; align-items: flex-start; padding: 6px 0 14px;
+  .sys-ig { display: flex; gap: 28px; align-items: center; padding: 6px 0 14px;
     margin-bottom: 6px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
-  .sys-col { flex: 1 1 340px; min-width: 300px; }
-  .ig-col { flex: 0 0 auto; }
+  .sys-col { flex: 1 1 380px; min-width: 300px; }
+  .ig-col { flex: 1 1 440px; display: flex; justify-content: center; }
   .sys-col h4 { margin-top: 4px; }
-  .infographic { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; padding: 4px 0; max-width: 520px; }
+  .infographic { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; padding: 4px 0;
+    width: 100%; justify-content: space-around; }
   .ig-cell { text-align: center; }
   .ig-label { font-size: 11px; color: var(--muted); margin-top: 2px; }
   .ig-sub { font-size: 10px; color: var(--muted); }
@@ -345,6 +361,11 @@
 
   <div class="content">
     <div class="cards" id="cards"></div>
+
+    <div id="serversGridSection">
+      <div class="toolbar"><h2>Servers</h2><span id="serversGridMeta" class="muted"></span></div>
+      <div class="server-grid" id="serversGrid"></div>
+    </div>
 
     <div class="panel" id="serverPanel" style="display:none"></div>
 
@@ -573,9 +594,11 @@ function setView(v) { selectedServer = null; view = v; render(); }
 
 function showSections() {
   const onServer = !!selectedServer;
-  const showContainers = onServer || view === "overview" || view === "containers";
-  const showBackups = onServer || view === "overview";
+  const overview = !onServer && view === "overview";
+  const showContainers = onServer || view === "containers";
+  const showBackups = onServer;
   const showPorts = !onServer && view === "ports";
+  $("serversGridSection").style.display = overview ? "" : "none";
   $("containersSection").style.display = showContainers ? "" : "none";
   $("backupsSection").style.display = showBackups ? "" : "none";
   $("portsSection").style.display = showPorts ? "" : "none";
@@ -666,6 +689,7 @@ function render() {
   renderNav();
   showSections();
   renderCards();
+  renderServersGrid();
   renderServerPanel();
   renderTable();
   renderBackups();
@@ -678,6 +702,37 @@ function renderNav() {
   $("navServersCount").textContent = state.servers.length;
   $("navContainersCount").textContent = cs.length;
   $("navPortsCount").textContent = ports;
+}
+
+function renderServersGrid() {
+  const q = $("search").value.toLowerCase();
+  const servers = state.servers.filter((s) => !q || (s.name + (s.group || "") + (s.host || "")).toLowerCase().includes(q));
+  const online = state.servers.filter((s) => s.online).length;
+  $("serversGridMeta").textContent = `${online}/${state.servers.length} online · click a server for details`;
+  $("serversGrid").innerHTML = servers.map((s) => {
+    const cs = s.containers || [];
+    const running = cs.filter((c) => c.state === "running").length;
+    const upd = cs.filter((c) => c.update === "outdated").length;
+    const osU = s.osUpdates && s.osUpdates.packages > 0 ? s.osUpdates.packages : 0;
+    const snaps = (s.backups && s.backups.snapshots && s.backups.snapshots.length) || 0;
+    const bar = (pct, lab) => `<div class="sg-bar"><div class="lab"><span>${lab}</span><span>${pct}%</span></div>
+      <span class="bar"><i style="width:${pct}%" class="${pct > 80 ? "hot" : ""}"></i></span></div>`;
+    return `<div class="sg-card" onclick="selectServer('${s.id}')">
+      <div class="sg-top">
+        <span class="dot ${s.online ? "online" : "offline"}"></span>
+        <span class="sg-name">${esc(s.name)}</span>
+        ${s.group ? `<span class="sg-group">${esc(s.group)}</span>` : ""}
+      </div>
+      <div class="sg-meta">${esc(s.host)} · Docker ${esc(s.dockerVersion)}${s.online ? "" : " · offline"}</div>
+      ${s.online ? `<div class="sg-bars">${bar(s.cpu, "CPU")}${bar(s.mem, "Mem")}</div>` : ""}
+      <div class="sg-stats">
+        <span class="sg-pill ${running === cs.length ? "green" : ""}">${running}/${cs.length} running</span>
+        ${upd ? `<span class="sg-pill yellow">${upd} update${upd > 1 ? "s" : ""}</span>` : ""}
+        ${osU ? `<span class="sg-pill yellow">${osU} OS</span>` : ""}
+        ${snaps ? `<span class="sg-pill">${snaps} snap${snaps > 1 ? "s" : ""}</span>` : ""}
+      </div>
+    </div>`;
+  }).join("") || '<div class="muted" style="padding:10px">No servers match.</div>';
 }
 
 function backupServers() {
@@ -1570,7 +1625,7 @@ async function removeServer(id) {
   toast(`${s.name} removed`, "ok");
   if (live) loadState(); else render();
 }
-$("search").addEventListener("input", () => { renderTable(); renderPorts(); });
+$("search").addEventListener("input", () => { renderTable(); renderPorts(); renderServersGrid(); });
 $("stateFilter").addEventListener("change", renderTable);
 $("updatesOnly").addEventListener("change", renderTable);
 
