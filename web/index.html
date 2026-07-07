@@ -151,8 +151,12 @@
   .chip .via { color: var(--accent); }
   .chip .proto { color: var(--muted); }
   .chip.host { border-style: dashed; }
-  .infographic { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; padding: 14px 4px 18px;
-    margin-bottom: 6px; border-bottom: 1px solid var(--border); }
+  .sys-ig { display: flex; gap: 28px; align-items: flex-start; padding: 6px 0 14px;
+    margin-bottom: 6px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+  .sys-col { flex: 1 1 340px; min-width: 300px; }
+  .ig-col { flex: 0 0 auto; }
+  .sys-col h4 { margin-top: 4px; }
+  .infographic { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; padding: 4px 0; max-width: 520px; }
   .ig-cell { text-align: center; }
   .ig-label { font-size: 11px; color: var(--muted); margin-top: 2px; }
   .ig-sub { font-size: 10px; color: var(--muted); }
@@ -928,7 +932,8 @@ function renderServerPanel() {
       ${os && os.packages > 0 ? `<button onclick="osUpdate('${s.id}')" title="Create a restore point, then upgrade all OS packages">⬆ Update OS</button>` : ""}
       <button class="danger" onclick="removeServer('${s.id}')">Remove server</button>
     </div>
-    ${serverInfographic(s)}
+    <div class="sys-ig">
+    <div class="sys-col">
     <h4>System</h4>
     ${(() => {
       const info = s.info || {};
@@ -950,6 +955,9 @@ function renderServerPanel() {
       return `<div class="sysinfo">${rows.map(([k, v]) =>
         `<div class="sysrow"><span class="sk">${k}</span><span class="sv">${v}</span></div>`).join("")}</div>`;
     })()}
+    </div>
+    <div class="ig-col">${serverInfographic(s)}</div>
+    </div>
     ${(s.mounts && s.mounts.length) ? `
     <h4>Disks / mounts</h4>
     <div class="mounts">${s.mounts.map((m) => `
