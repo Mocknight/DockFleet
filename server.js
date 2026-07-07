@@ -453,12 +453,15 @@ const routes = {
   },
 
   "POST /api/containers/action": async (req, res) => {
-    const { serverId, containerId, action, force } = await readBody(req);
+    const { serverId, containerId, action, force, packages } = await readBody(req);
     if (!["start", "stop", "restart", "update", "os-update"].includes(action))
       return json(res, 400, { error: "bad action" });
     const srv = servers.get(serverId);
     if (!srv) return json(res, 404, { error: "server not found" });
-    srv.pending.push({ id: crypto.randomBytes(6).toString("hex"), action, containerId: String(containerId || ""), force: !!force });
+    const cmd = { id: crypto.randomBytes(6).toString("hex"), action, containerId: String(containerId || ""), force: !!force };
+    if (action === "os-update" && Array.isArray(packages))
+      cmd.packages = packages.slice(0, 500).map((p) => String(p).slice(0, 120));
+    srv.pending.push(cmd);
     console.log(`[action] ${action} ${containerId || ""} → ${srv.name}`);
     json(res, 202, { queued: true });
   },

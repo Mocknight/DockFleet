@@ -621,9 +621,14 @@ async function postEvent(ok, message) {
 /* ---------------- OS upgrade with restore point ---------------- */
 let osUpdating = false;
 
-async function osUpgrade(force) {
+async function osUpgrade(force, packages) {
   if (osUpdating) return postEvent(false, "OS update already in progress — ignored");
   osUpdating = true;
+  // sanitise the optional package selection
+  const picked = Array.isArray(packages)
+    ? packages.map(String).filter((n) => /^[a-zA-Z0-9][a-zA-Z0-9.+_:-]*$/.test(n)).slice(0, 500)
+    : [];
+  const targeted = picked.length > 0;
   let tool = "";
   try {
     // 0) we need write access to the host — chroot over a :ro mount can't upgrade
@@ -654,17 +659,21 @@ async function osUpgrade(force) {
     // 2) upgrade
     const before = (osUpdates() || {}).packages;
     const mgr = (osUpdates() || {}).manager;
-    await postEvent(true, `Upgrading ${before} package(s) via ${mgr}…`);
+    const names = picked.map(shSingleQuote).join(" ");
+    await postEvent(true, targeted
+      ? `Upgrading ${picked.length} selected package(s) via ${mgr}…`
+      : `Upgrading ${before} package(s) via ${mgr}…`);
     try {
       if (mgr === "apt") {
         await hostExecAsync("apt-get update", 10 * 60000);
-        await hostExecAsync(
-          "DEBIAN_FRONTEND=noninteractive apt-get -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold dist-upgrade",
+        await hostExecAsync(targeted
+          ? `DEBIAN_FRONTEND=noninteractive apt-get install -y --only-upgrade -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold ${names}`
+          : "DEBIAN_FRONTEND=noninteractive apt-get -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold dist-upgrade",
           60 * 60000);
       } else if (mgr === "dnf") {
-        await hostExecAsync("dnf -y upgrade", 60 * 60000);
+        await hostExecAsync(targeted ? `dnf -y upgrade ${names}` : "dnf -y upgrade", 60 * 60000);
       } else if (mgr === "apk") {
-        await hostExecAsync("apk upgrade", 20 * 60000);
+        await hostExecAsync(targeted ? `apk upgrade ${names}` : "apk upgrade", 20 * 60000);
       } else {
         return postEvent(false, "OS update failed: unsupported package manager");
       }
@@ -691,7 +700,7 @@ async function exec(cmd) {
     case "start": case "stop": case "restart":
       return docker("POST", `/containers/${cmd.containerId}/${cmd.action}`);
     case "update": return updateContainer(cmd.containerId);
-    case "os-update": return osUpgrade(!!cmd.force);
+    case "os-update": return osUpgrade(!!cmd.force, cmd.packages);
     case "backup-create": return backupCreate(cmd.comment);
     case "backup-delete": return backupDelete(cmd.name);
     case "backup-restore": return backupRestore(cmd.name);

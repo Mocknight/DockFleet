@@ -71,14 +71,30 @@
   /* sidebar collapse */
   #sidebarToggle { font-size: 18px; margin-right: 4px; }
   body.sidebar-collapsed aside { display: none; }
-  /* nav items */
-  .nav-item { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: 8px;
-    cursor: pointer; font-size: 13px; font-weight: 600; margin-bottom: 2px; border: 1px solid transparent; }
-  .nav-item:hover { background: var(--bg3); }
-  .nav-item.active { background: var(--bg3); border-color: var(--border); color: var(--accent); }
+  /* nav tree */
+  .tree-node { margin-bottom: 2px; }
+  .tree-head { display: flex; align-items: center; gap: 7px; padding: 8px 10px; border-radius: 8px;
+    cursor: pointer; font-size: 13px; font-weight: 600; border: 1px solid transparent; }
+  .tree-head:hover { background: var(--bg3); }
+  .tree-head.active { background: var(--bg3); border-color: var(--border); color: var(--accent); }
+  .tree-head .caret { font-size: 9px; color: var(--muted); width: 12px; text-align: center; cursor: pointer;
+    transition: transform .15s; }
+  .tree-head.collapsed .caret { transform: rotate(-90deg); }
+  .tree-label { flex: 1; }
   .nav-ic { width: 16px; text-align: center; color: var(--muted); }
-  .nav-item.active .nav-ic { color: var(--accent); }
-  .nav-count { margin-left: auto; font-size: 11px; color: var(--muted); font-weight: 500; }
+  .tree-head.active .nav-ic { color: var(--accent); }
+  .nav-count { font-size: 11px; color: var(--muted); font-weight: 500; }
+  .tree-children { margin: 2px 0 4px 8px; padding-left: 8px; border-left: 1px solid var(--border); }
+  .tree-children.hidden { display: none; }
+  /* child leaf rows (containers, ports) */
+  .leaf { display: flex; align-items: center; gap: 7px; padding: 5px 8px; border-radius: 6px; cursor: pointer;
+    font-size: 12px; }
+  .leaf:hover { background: var(--bg3); }
+  .leaf .leaf-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .leaf .leaf-sub { color: var(--muted); font-size: 11px; }
+  .leaf .ldot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .leaf .ldot.running { background: var(--green); } .leaf .ldot.exited { background: var(--red); }
+  .leaf .ldot.paused { background: var(--yellow); }
   .group-label { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
   .group-label .caret { transition: transform .15s; font-size: 9px; }
   .group-label.collapsed .caret { transform: rotate(-90deg); }
@@ -277,6 +293,15 @@
     font-family: ui-monospace, "SF Mono", Menlo, monospace; color: #b8c4d3;
   }
   #drawerBody { flex: 1; overflow: auto; padding: 14px 18px; display: none; }
+  .osu { display: flex; flex-direction: column; height: 100%; }
+  .osu-bar { display: flex; align-items: center; gap: 16px; padding-bottom: 10px; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
+  .osu-list { display: flex; flex-direction: column; gap: 2px; }
+  .osu-row { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+  .osu-row:hover { background: var(--bg3); }
+  .osu-name { font-family: ui-monospace, Menlo, monospace; min-width: 200px; }
+  .osu-ver { color: var(--muted); font-size: 12px; flex: 1; }
+  .osu-sec { font-size: 10px; text-transform: uppercase; color: var(--red); background: rgba(248,81,73,.12);
+    border-radius: 4px; padding: 1px 6px; }
   .cname-link { color: var(--accent); cursor: pointer; }
   .cname-link:hover { text-decoration: underline; }
   .cedit { display: flex; flex-direction: column; gap: 10px; height: 100%; }
@@ -340,14 +365,32 @@
 
 <main>
   <aside>
-    <h3>Views</h3>
-    <div class="nav">
-      <div class="nav-item" id="navServers" onclick="setView('overview')"><span class="nav-ic">▦</span> All servers <span class="nav-count" id="navServersCount"></span></div>
-      <div class="nav-item" id="navContainers" onclick="setView('containers')"><span class="nav-ic">◫</span> All containers <span class="nav-count" id="navContainersCount"></span></div>
-      <div class="nav-item" id="navPorts" onclick="setView('ports')"><span class="nav-ic">⇄</span> All ports <span class="nav-count" id="navPortsCount"></span></div>
+    <div class="nav" id="navTree">
+      <div class="tree-node">
+        <div class="tree-head" id="navServers">
+          <span class="caret" onclick="event.stopPropagation();toggleNode('servers')">▾</span>
+          <span class="nav-ic">▦</span><span class="tree-label" onclick="setView('overview')">All servers</span>
+          <span class="nav-count" id="navServersCount"></span>
+        </div>
+        <div class="tree-children" id="serverList"></div>
+      </div>
+      <div class="tree-node">
+        <div class="tree-head" id="navContainers">
+          <span class="caret" onclick="event.stopPropagation();toggleNode('containers')">▾</span>
+          <span class="nav-ic">◫</span><span class="tree-label" onclick="setView('containers')">All containers</span>
+          <span class="nav-count" id="navContainersCount"></span>
+        </div>
+        <div class="tree-children" id="containersTree"></div>
+      </div>
+      <div class="tree-node">
+        <div class="tree-head" id="navPorts">
+          <span class="caret" onclick="event.stopPropagation();toggleNode('ports')">▾</span>
+          <span class="nav-ic">⇄</span><span class="tree-label" onclick="setView('ports')">All ports</span>
+          <span class="nav-count" id="navPortsCount"></span>
+        </div>
+        <div class="tree-children" id="portsTree"></div>
+      </div>
     </div>
-    <h3 style="margin-top:14px">Servers</h3>
-    <div id="serverList"></div>
     <div id="manageBar">
       <span id="selCount" class="muted">0 selected</span>
       <div class="manage-actions">
@@ -1071,9 +1114,14 @@ function serverItemHtml(s) {
     </div>`;
 }
 
+function applyNode(name, headId, childId) {
+  const expanded = expandedNodes.has(name);
+  $(headId).classList.toggle("collapsed", !expanded);
+  $(childId).classList.toggle("hidden", !expanded);
+}
+
 function renderSidebar() {
-  const list = $("serverList");
-  // group servers by their group label
+  // ---- All servers (grouped) ----
   const groups = new Map();
   for (const s of state.servers) {
     const g = s.group || "";
@@ -1081,7 +1129,6 @@ function renderSidebar() {
     groups.get(g).push(s);
   }
   const orderedGroups = [...groups.keys()].sort((a, b) => (a === "" ? 1 : b === "" ? -1 : a.localeCompare(b)));
-
   let html = "";
   for (const g of orderedGroups) {
     const collapsed = collapsedGroups.has(g);
@@ -1090,7 +1137,30 @@ function renderSidebar() {
         <span class="caret">▼</span> ${g === "" ? "Ungrouped" : esc(g)} <span class="nav-count">${groups.get(g).length}</span></div>`;
     if (!collapsed) html += groups.get(g).map(serverItemHtml).join("");
   }
-  list.innerHTML = html || '<div class="muted" style="padding:8px;font-size:12px">No servers yet.</div>';
+  $("serverList").innerHTML = html || '<div class="muted" style="padding:8px;font-size:12px">No servers yet.</div>';
+
+  // ---- All containers (leaf list) ----
+  const cs = allContainers();
+  $("containersTree").innerHTML = cs.length
+    ? cs.map((c) => `<div class="leaf" title="${esc(c.name)} on ${esc(c.server.name)}" onclick="openContainer('${c.server.id}','${c.id}')">
+        <span class="ldot ${c.state}"></span>
+        <span class="leaf-name">${esc(c.name)}</span>
+        <span class="leaf-sub">${esc(c.server.name)}</span></div>`).join("")
+    : '<div class="muted" style="padding:6px 8px;font-size:12px">none</div>';
+
+  // ---- All ports (leaf list) ----
+  const ports = [];
+  for (const s of state.servers) for (const p of s.ports || []) ports.push({ ...p, server: s });
+  ports.sort((a, b) => a.port - b.port);
+  $("portsTree").innerHTML = ports.length
+    ? ports.map((p) => `<div class="leaf" title="${p.port}/${esc(p.proto)} on ${esc(p.server.name)}" onclick="selectServer('${p.server.id}')">
+        <span class="leaf-name">${p.port}<span class="leaf-sub">/${esc(p.proto)}</span></span>
+        <span class="leaf-sub">${esc(p.via || p.server.name)}</span></div>`).join("")
+    : '<div class="muted" style="padding:6px 8px;font-size:12px">none</div>';
+
+  applyNode("servers", "navServers", "serverList");
+  applyNode("containers", "navContainers", "containersTree");
+  applyNode("ports", "navPorts", "portsTree");
 
   // manage bar
   const bar = $("manageBar");
@@ -1102,6 +1172,14 @@ function renderSidebar() {
     bar.style.display = "none";
   }
   $("manageToggle").textContent = manageMode ? "Done" : "Manage servers";
+}
+
+let expandedNodes = new Set(["servers"]);
+try { const v = localStorage.getItem("df-expanded-nodes"); if (v) expandedNodes = new Set(JSON.parse(v)); } catch {}
+function toggleNode(name) {
+  if (expandedNodes.has(name)) expandedNodes.delete(name); else expandedNodes.add(name);
+  try { localStorage.setItem("df-expanded-nodes", JSON.stringify([...expandedNodes])); } catch {}
+  renderSidebar();
 }
 
 let collapsedGroups = new Set();
@@ -1542,22 +1620,72 @@ function showOsUpdates(serverId) {
   const s = state.servers.find((x) => x.id === serverId);
   if (!s || !s.osUpdates) return;
   const os = s.osUpdates;
+  window._osServer = serverId;
   $("drawerTitle").textContent = `${s.name} — pending OS updates (${os.manager})`;
-  $("drawerActions").innerHTML = os.packages > 0
-    ? `<button class="primary" title="Create a restore point, then upgrade all OS packages" onclick="closeDrawer(); osUpdate('${s.id}')">⬆ Update OS</button>`
-    : "";
-  drawerPre();
   const list = os.list || [];
+  $("drawerActions").innerHTML = os.packages > 0
+    ? `<button class="hide-viewer" onclick="osUpdateSelected()" title="Update only the ticked packages">Update selected</button>
+       <button class="primary hide-viewer" onclick="closeDrawer(); osUpdate('${s.id}')" title="Create a restore point, then upgrade everything">⬆ Update all</button>`
+    : "";
   if (!list.length) {
-    $("drawerLogs").textContent =
-      "Package list not available.\n\nRestart the agent to pick up the latest agent code:\n  docker restart dockfleet-agent";
-  } else {
-    const w = Math.max(...list.map((p) => p.name.length), 10);
-    $("drawerLogs").textContent = list
-      .map((p) => `${p.security ? "⚠ " : "  "}${p.name.padEnd(w + 2)}${p.current ? p.current + " → " : ""}${p.next}${p.security ? "   [security]" : ""}`)
-      .join("\n");
+    drawerPre();
+    $("drawerLogs").textContent = os.packages > 0
+      ? "Package list not available.\n\nRestart the agent to pick up the latest agent code:\n  docker restart dockfleet-agent"
+      : "System is up to date.";
+    $("drawer").classList.add("open");
+    return;
   }
+  drawerHtml(`
+    <div class="osu">
+      <div class="osu-bar">
+        <label class="toggle"><input type="checkbox" id="osuAll" onchange="osuToggleAll(this.checked)"> Select all</label>
+        <label class="toggle"><input type="checkbox" onchange="osuSelectSecurity(this.checked)"> Security only</label>
+        <span class="muted" id="osuCount" style="margin-left:auto"></span>
+      </div>
+      <div class="osu-list">
+        ${list.map((p, i) => `
+        <label class="osu-row">
+          <input type="checkbox" class="osu-cb" data-pkg="${esc(p.name)}" ${p.security ? 'data-sec="1"' : ""} onchange="osuUpdateCount()">
+          <span class="osu-name">${esc(p.name)}</span>
+          <span class="osu-ver">${p.current ? esc(p.current) + " → " : ""}${esc(p.next)}</span>
+          ${p.security ? '<span class="osu-sec">security</span>' : ""}
+        </label>`).join("")}
+      </div>
+    </div>`);
+  osuUpdateCount();
   $("drawer").classList.add("open");
+}
+function osuBoxes() { return [...document.querySelectorAll(".osu-cb")]; }
+function osuToggleAll(on) { osuBoxes().forEach((b) => (b.checked = on)); osuUpdateCount(); }
+function osuSelectSecurity(on) { osuBoxes().forEach((b) => { if (b.dataset.sec) b.checked = on; }); osuUpdateCount(); }
+function osuUpdateCount() {
+  const n = osuBoxes().filter((b) => b.checked).length;
+  $("osuCount").textContent = n + " selected";
+}
+function osuUpdateSelected() { osUpdateSelected(); }
+async function osUpdateSelected() {
+  const s = state.servers.find((x) => x.id === window._osServer);
+  if (!s) return;
+  const pkgs = osuBoxes().filter((b) => b.checked).map((b) => b.dataset.pkg);
+  if (!pkgs.length) { toast("Tick at least one package", "warn"); return; }
+  const tool = (s.osUpdates && s.osUpdates.snapshotTool) || "";
+  let force = false;
+  if (tool) {
+    if (!confirm(`Update ${pkgs.length} selected package(s) on ${s.name}?\n\nA restore point is created first via ${tool}.`)) return;
+  } else {
+    if (!confirm(`⚠ No restore-point tool on ${s.name}. Update ${pkgs.length} package(s) anyway, without one?`)) return;
+    force = true;
+  }
+  if (!live) { toast("Update queued (demo)", "ok"); closeDrawer(); return; }
+  try {
+    const r = await fetch("/api/containers/action", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ serverId: s.id, containerId: "", action: "os-update", force, packages: pkgs }),
+    });
+    if (!r.ok) throw new Error((await r.json()).error || r.status);
+    toast(`Queued ${pkgs.length} package update(s) — watch Recent activity`, "ok");
+    closeDrawer();
+  } catch (e) { toast("Failed: " + e.message, "warn"); }
 }
 
 /* ---------------- Sidebar / filters ---------------- */
