@@ -1,0 +1,19 @@
+# DockFleet central server
+services:
+  dockfleet:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    container_name: dockfleet
+    ports:
+      - "0.0.0.0:${DOCKFLEET_PORT:-8090}:8080"
+    volumes:
+      - dockfleet-data:/app/data
+    environment:
+      # Set TRUST_PROXY=1 and TLS_DISABLE=1 if terminating TLS at Nginx Proxy Manager.
+      - TRUST_PROXY=${TRUST_PROXY:-0}
+      - TLS_DISABLE=${TLS_DISABLE:-0}
+    restart: unless-stopped
+
+volumes:
+  dockfleet-data:

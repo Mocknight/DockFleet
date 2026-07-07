@@ -1,0 +1,5 @@
+FROM node:20-alpine
+WORKDIR /app
+COPY agent.js ./
+# Needs the docker socket mounted and DOCKFLEET_URL / DOCKFLEET_TOKEN set.
+CMD ["node", "agent.js"]
