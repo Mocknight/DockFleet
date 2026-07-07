@@ -1,0 +1,1504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DockFleet — Docker Management</title>
+<style>
+  :root {
+    --bg: #0d1117; --bg2: #161b22; --bg3: #1c2330; --border: #2d3646;
+    --text: #e6edf3; --muted: #8b98a9; --accent: #4da3ff; --accent2: #1f6feb;
+    --green: #3fb950; --red: #f85149; --yellow: #d29922; --purple: #a371f7;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 14px/1.5 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    height: 100vh; display: flex; flex-direction: column; overflow: hidden;
+  }
+  /* ---------- Topbar ---------- */
+  header {
+    display: flex; align-items: center; gap: 16px; padding: 0 20px; height: 56px;
+    background: var(--bg2); border-bottom: 1px solid var(--border); flex-shrink: 0;
+  }
+  .logo { display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: 16px; }
+  .logo svg { width: 26px; height: 26px; }
+  .search { flex: 1; max-width: 420px; position: relative; }
+  .search input {
+    width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    border-radius: 8px; padding: 7px 12px 7px 34px; font-size: 13px; outline: none;
+  }
+  .search input:focus { border-color: var(--accent2); }
+  .search::before { content: "⌕"; position: absolute; left: 11px; top: 5px; color: var(--muted); font-size: 16px; }
+  .spacer { flex: 1; }
+  .usermenu { display: flex; align-items: center; gap: 10px; }
+  .usermenu #whoami { font-size: 12px; white-space: nowrap; }
+  .role-badge { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; padding: 2px 7px;
+    border-radius: 20px; background: var(--bg3); border: 1px solid var(--border); margin-left: 6px; }
+  body.role-viewer .hide-viewer { display: none !important; }
+  table.mini { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.mini th { text-align: left; color: var(--muted); font-size: 11px; text-transform: uppercase; padding: 4px 6px; }
+  table.mini td { padding: 5px 6px; border-top: 1px solid var(--border); }
+  table.mini td.right { text-align: right; white-space: nowrap; }
+  table.mini select { padding: 3px 6px; font-size: 12px; }
+  .newuser { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+  .newuser input { flex: 1; min-width: 120px; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 7px; padding: 6px 9px; outline: none; }
+  .auditlog { display: flex; flex-direction: column; gap: 3px; font-size: 12px; }
+  .arow { padding: 4px 8px; background: var(--bg); border-radius: 6px; }
+  .arow .mono { font-family: ui-monospace, Menlo, monospace; color: var(--accent); }
+  .warnt { color: var(--yellow); }
+  button {
+    font: inherit; cursor: pointer; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--bg3); color: var(--text); padding: 7px 14px; transition: background .15s;
+  }
+  button:hover { background: #232c3d; }
+  button.primary { background: var(--accent2); border-color: var(--accent2); font-weight: 600; }
+  button.primary:hover { background: #2a7aef; }
+  button.danger { color: var(--red); border-color: rgba(248,81,73,.4); background: rgba(248,81,73,.08); }
+  button.danger:hover { background: rgba(248,81,73,.18); }
+  /* ---------- Layout ---------- */
+  main { display: flex; flex: 1; overflow: hidden; }
+  /* ---------- Sidebar ---------- */
+  aside {
+    width: 250px; background: var(--bg2); border-right: 1px solid var(--border);
+    padding: 14px 10px; overflow-y: auto; flex-shrink: 0;
+  }
+  aside h3 {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
+    color: var(--muted); padding: 0 8px 8px;
+  }
+  .server-item {
+    padding: 9px 10px; border-radius: 8px; cursor: pointer; margin-bottom: 3px;
+    border: 1px solid transparent;
+  }
+  .server-item:hover { background: var(--bg3); }
+  .server-item[draggable="true"] { cursor: grab; }
+  .server-item[draggable="true"]:active { cursor: grabbing; }
+  .server-item.active { background: var(--bg3); border-color: var(--border); }
+  .server-top { display: flex; align-items: center; gap: 8px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .dot.online { background: var(--green); box-shadow: 0 0 6px rgba(63,185,80,.6); }
+  .dot.offline { background: var(--red); }
+  .server-name { font-weight: 600; font-size: 13px; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .server-count { font-size: 11px; color: var(--muted); }
+  .server-meta { font-size: 11px; color: var(--muted); margin: 4px 0 6px 16px; }
+  .bars { display: flex; gap: 6px; margin-left: 16px; }
+  .bar { flex: 1; height: 4px; background: var(--bg); border-radius: 2px; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: var(--accent); border-radius: 2px; }
+  .bar i.hot { background: var(--yellow); }
+  .add-server-btn { width: 100%; margin-top: 10px; border-style: dashed; color: var(--muted); }
+  .manage-btn { width: 100%; margin-top: 6px; background: transparent; border: none; color: var(--muted); font-size: 12px; }
+  .manage-btn:hover { background: var(--bg3); color: var(--text); }
+  .group-label { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted);
+    padding: 10px 10px 4px; }
+  .server-item.picked { background: rgba(31,111,235,.14); border-color: var(--accent2); }
+  #manageBar { display: none; align-items: center; gap: 8px; margin-top: 10px; padding: 8px 10px;
+    background: var(--bg3); border: 1px solid var(--border); border-radius: 8px; }
+  #manageBar #selCount { flex: 1; font-size: 12px; }
+  .manage-actions { display: flex; gap: 6px; }
+  .manage-actions button { padding: 5px 10px; font-size: 12px; }
+  /* ---------- Content ---------- */
+  .content { flex: 1; overflow-y: auto; padding: 20px 24px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; margin-bottom: 20px; }
+  .card {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 14px 16px;
+  }
+  .card .label { font-size: 12px; color: var(--muted); }
+  .card .value { font-size: 26px; font-weight: 700; margin-top: 2px; }
+  .card .value.green { color: var(--green); } .card .value.yellow { color: var(--yellow); }
+  .card .value.red { color: var(--red); }
+  /* ---------- Server detail panel ---------- */
+  .panel {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 16px; margin-bottom: 20px;
+  }
+  .panel-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+  .panel-head h3 { font-size: 14px; }
+  .panel-head .meta { color: var(--muted); font-size: 12px; }
+  .fw { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding: 4px 11px; border-radius: 20px; }
+  .fw.on { background: rgba(63,185,80,.15); color: var(--green); }
+  .fw.off { background: rgba(248,81,73,.15); color: var(--red); }
+  .fw.unk { background: rgba(139,152,169,.12); color: var(--muted); }
+  .fw.warn { background: rgba(210,153,34,.18); color: var(--yellow); }
+  .panel h4 {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .07em;
+    color: var(--muted); margin: 12px 0 7px;
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+    padding: 4px 9px; color: var(--text);
+  }
+  .chip .via { color: var(--accent); }
+  .chip .proto { color: var(--muted); }
+  .chip.host { border-style: dashed; }
+  .sysinfo { display: flex; flex-direction: column; gap: 3px; max-width: 640px; }
+  .sysrow { display: flex; gap: 12px; font-size: 13px; padding: 3px 0; border-bottom: 1px solid rgba(45,54,70,.5); }
+  .sysrow .sk { color: var(--muted); min-width: 130px; }
+  .sysrow .sv { flex: 1; }
+  .adapter { display: inline-block; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 2px 8px; margin: 0 6px 4px 0; }
+  .adapter b { color: var(--accent); }
+  .mounts { display: flex; flex-direction: column; gap: 6px; max-width: 620px; }
+  .mount { display: flex; align-items: center; gap: 10px; font-size: 12px; }
+  .mount-path { font-family: ui-monospace, "SF Mono", Menlo, monospace; min-width: 90px; }
+  .mount-bar { flex: 1; max-width: 180px; height: 5px; }
+  .mount-pct { min-width: 34px; text-align: right; }
+  .hot-txt { color: var(--yellow); font-weight: 600; }
+  .events { display: flex; flex-direction: column; gap: 4px; }
+  .event { font-size: 12px; padding: 5px 10px; background: var(--bg); border-radius: 6px; border-left: 2px solid var(--green); }
+  .event.fail { border-left-color: var(--red); }
+  /* ---------- Toolbar ---------- */
+  .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+  .toolbar h2 { font-size: 16px; flex: 1; }
+  select {
+    font: inherit; background: var(--bg3); color: var(--text); border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px 10px; outline: none; cursor: pointer;
+  }
+  .toggle { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); cursor: pointer; user-select: none; }
+  /* ---------- Table ---------- */
+  table { width: 100%; border-collapse: collapse; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .table-wrap { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .table-wrap table { border: none; }
+  th {
+    text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
+    color: var(--muted); padding: 10px 14px; background: var(--bg3); font-weight: 600;
+  }
+  td { padding: 11px 14px; border-top: 1px solid var(--border); vertical-align: middle; }
+  tr.row:hover td { background: #1a212e; }
+  .c-name { font-weight: 600; }
+  .c-image { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; color: var(--muted); }
+  .c-image b { color: var(--text); font-weight: 500; }
+  .img-link { color: inherit; text-decoration: none; }
+  .img-link:hover b { color: var(--accent); text-decoration: underline; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600;
+    padding: 3px 9px; border-radius: 20px; white-space: nowrap;
+  }
+  .badge.running { background: rgba(63,185,80,.15); color: var(--green); }
+  .badge.exited { background: rgba(248,81,73,.15); color: var(--red); }
+  .badge.paused { background: rgba(210,153,34,.15); color: var(--yellow); }
+  .badge.uptodate { background: rgba(139,152,169,.12); color: var(--muted); }
+  .badge.outdated { background: rgba(210,153,34,.18); color: var(--yellow); }
+  .badge.unknown { background: rgba(139,152,169,.12); color: var(--muted); }
+  .badge .bdot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .actions { display: flex; gap: 4px; justify-content: flex-end; }
+  .icon-btn {
+    width: 30px; height: 30px; padding: 0; display: inline-flex; align-items: center;
+    justify-content: center; font-size: 14px; border-radius: 7px; background: transparent; border: none; color: var(--muted);
+  }
+  .icon-btn:hover { background: var(--bg3); color: var(--text); }
+  .icon-btn.upd { color: var(--yellow); }
+  .muted { color: var(--muted); font-size: 12px; }
+  .empty { padding: 40px; text-align: center; color: var(--muted); }
+  /* ---------- Modal ---------- */
+  .overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.6); display: none;
+    align-items: center; justify-content: center; z-index: 50;
+  }
+  .overlay.open { display: flex; }
+  .modal {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 12px;
+    width: 520px; max-width: 92vw; padding: 22px;
+  }
+  .modal h3 { font-size: 16px; margin-bottom: 4px; }
+  .modal p { color: var(--muted); font-size: 13px; margin-bottom: 14px; }
+  .modal label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 4px; }
+  .modal input {
+    width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    border-radius: 8px; padding: 8px 12px; font: inherit; outline: none;
+  }
+  .modal input:focus { border-color: var(--accent2); }
+  pre.cmd {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px; font-size: 12px; overflow-x: auto; margin-top: 8px; position: relative;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; color: #9ecbff; white-space: pre-wrap; word-break: break-all;
+  }
+  .modal-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+  /* ---------- Drawer (logs) ---------- */
+  .drawer {
+    position: fixed; top: 0; right: -560px; width: 560px; max-width: 95vw; height: 100vh;
+    background: var(--bg2); border-left: 1px solid var(--border); z-index: 60;
+    transition: right .25s ease; display: flex; flex-direction: column;
+  }
+  .drawer.open { right: 0; }
+  .drawer-head { display: flex; align-items: center; padding: 14px 18px; border-bottom: 1px solid var(--border); gap: 10px; }
+  .drawer-head h3 { font-size: 14px; flex: 1; }
+  .drawer pre {
+    flex: 1; overflow: auto; padding: 14px 18px; font-size: 12px; line-height: 1.7;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; color: #b8c4d3;
+  }
+  #drawerBody { flex: 1; overflow: auto; padding: 14px 18px; display: none; }
+  .cname-link { color: var(--accent); cursor: pointer; }
+  .cname-link:hover { text-decoration: underline; }
+  .cedit { display: flex; flex-direction: column; gap: 10px; height: 100%; }
+  .ce-meta { font-size: 13px; color: var(--muted); display: flex; flex-direction: column; gap: 3px; }
+  .ce-meta code { color: var(--text); font-size: 12px; }
+  .ce-actions { display: flex; gap: 6px; }
+  .qfiles { display: flex; flex-wrap: wrap; gap: 6px; }
+  .qfile { font-size: 12px; padding: 5px 10px; }
+  .ce-open { display: flex; gap: 6px; }
+  .ce-open select { flex: 0 0 auto; }
+  .ce-open input { flex: 1; background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    border-radius: 8px; padding: 7px 10px; font: 13px ui-monospace, Menlo, monospace; outline: none; }
+  .ce-open input:focus { border-color: var(--accent2); }
+  .ce-browser { border: 1px solid var(--border); border-radius: 8px; background: var(--bg); max-height: 260px; overflow: auto; }
+  .fb-head { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--bg3); }
+  .fb-head .mono { flex: 1; font-family: ui-monospace, Menlo, monospace; font-size: 12px; word-break: break-all; }
+  .fb-list { display: flex; flex-direction: column; }
+  .fb-row { display: flex; align-items: center; gap: 8px; padding: 5px 12px; cursor: pointer; font-size: 13px; }
+  .fb-row:hover { background: var(--bg3); }
+  .fb-row.file > span:last-child { color: var(--accent); }
+  .fb-tag { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted);
+    background: var(--bg3); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; min-width: 30px; text-align: center; }
+  .fb-tag.file { color: var(--accent); }
+  .ce-text { width: 100%; min-height: 320px; flex: 1; resize: vertical; background: #0b0e14;
+    border: 1px solid var(--border); border-radius: 8px; color: #d7e0ea; padding: 12px;
+    font: 12px/1.6 ui-monospace, "SF Mono", Menlo, monospace; outline: none; tab-size: 2; }
+  .ce-text:focus { border-color: var(--accent2); }
+  .ce-save { display: flex; align-items: center; gap: 12px; }
+  .ce-save span { flex: 1; font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+  /* ---------- Toast ---------- */
+  #toasts { position: fixed; bottom: 20px; right: 20px; z-index: 100; display: flex; flex-direction: column; gap: 8px; }
+  .toast {
+    background: var(--bg3); border: 1px solid var(--border); border-left: 3px solid var(--accent);
+    border-radius: 8px; padding: 10px 16px; font-size: 13px; min-width: 240px;
+    animation: slidein .2s ease;
+  }
+  .toast.ok { border-left-color: var(--green); }
+  .toast.warn { border-left-color: var(--yellow); }
+  @keyframes slidein { from { transform: translateX(30px); opacity: 0; } to { transform: none; opacity: 1; } }
+  @media (max-width: 760px) { aside { display: none; } }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <svg viewBox="0 0 24 24" fill="none"><rect x="2" y="11" width="4" height="4" rx="1" fill="#4da3ff"/><rect x="7" y="11" width="4" height="4" rx="1" fill="#4da3ff"/><rect x="12" y="11" width="4" height="4" rx="1" fill="#4da3ff"/><rect x="7" y="6" width="4" height="4" rx="1" fill="#1f6feb"/><rect x="12" y="6" width="4" height="4" rx="1" fill="#1f6feb"/><path d="M2 17c4 3 14 3 20-2" stroke="#4da3ff" stroke-width="1.6" stroke-linecap="round"/></svg>
+    DockFleet
+  </div>
+  <div class="search"><input id="search" type="text" placeholder="Search containers, images, servers…"></div>
+  <div class="spacer"></div>
+  <button id="checkUpdates" class="hide-viewer">⬆ Check updates</button>
+  <button class="primary hide-viewer" id="addServerBtn">+ Add server</button>
+  <button id="settingsBtn" title="Users & audit log" style="display:none">⚙</button>
+  <div class="usermenu">
+    <span id="whoami" class="muted"></span>
+    <button id="logoutBtn" title="Sign out">Sign out</button>
+  </div>
+</header>
+
+<main>
+  <aside>
+    <h3>Servers</h3>
+    <div id="serverList"></div>
+    <div id="manageBar">
+      <span id="selCount" class="muted">0 selected</span>
+      <div class="manage-actions">
+        <button class="act" onclick="bulkGroup()">Group</button>
+        <button class="act danger" onclick="bulkDelete()">Delete</button>
+      </div>
+    </div>
+    <button class="add-server-btn" onclick="openModal()">+ Add server</button>
+    <button class="manage-btn" id="manageToggle" onclick="toggleManage()">Manage servers</button>
+  </aside>
+
+  <div class="content">
+    <div class="cards" id="cards"></div>
+
+    <div class="panel" id="serverPanel" style="display:none"></div>
+
+    <div class="toolbar">
+      <h2 id="viewTitle">All containers</h2>
+      <label class="toggle"><input type="checkbox" id="updatesOnly"> Updates available only</label>
+      <select id="stateFilter">
+        <option value="">All states</option>
+        <option value="running">Running</option>
+        <option value="exited">Exited</option>
+        <option value="paused">Paused</option>
+      </select>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Container</th><th>Server</th><th>Image</th><th>State</th>
+            <th>Uptime</th><th>CPU / Mem</th><th>Update</th><th style="text-align:right">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+
+    <div class="toolbar" style="margin-top:26px">
+      <h2 id="backupTitle">System backups</h2>
+      <span id="backupMeta" class="muted"></span>
+      <span style="flex:1"></span>
+      <button class="hide-viewer" id="schedBtn" onclick="openSched()" title="Automatic backup schedule">Schedule…</button>
+      <button class="hide-viewer" id="backupDestBtn" onclick="configBackupDest()" title="Configure rsync destination">Backup destination…</button>
+      <button class="primary hide-viewer" id="createBackupBtn" onclick="createBackup()">+ Create backup</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Snapshot</th><th>Server</th><th>Tags</th><th>Description</th><th style="text-align:right">Actions</th></tr>
+        </thead>
+        <tbody id="backupBody"></tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<!-- Add server modal -->
+<div class="overlay" id="modal">
+  <div class="modal">
+    <h3>Add a server</h3>
+    <p>Run the DockFleet agent on the server you want to manage. It connects outbound — no inbound ports needed.</p>
+    <label>Server name</label>
+    <input id="newServerName" type="text" placeholder="e.g. prod-web-01">
+    <label>Enrollment command</label>
+    <pre class="cmd" id="enrollCmd"></pre>
+    <div class="modal-foot">
+      <button onclick="closeModal()">Cancel</button>
+      <button onclick="copyCmd()">Copy command</button>
+      <button class="primary" onclick="addServer()">Add server</button>
+    </div>
+  </div>
+</div>
+
+<!-- Backup schedule modal -->
+<div class="overlay" id="schedModal">
+  <div class="modal">
+    <h3>Scheduled backups</h3>
+    <p id="schedFor" class="muted"></p>
+    <label class="toggle" style="margin-top:4px"><input type="checkbox" id="schedEnabled"> Enable automatic backups</label>
+    <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap">
+      <div><label>Frequency</label>
+        <select id="schedFreq" onchange="schedFreqChange()">
+          <option value="daily">Daily</option><option value="weekly">Weekly</option>
+        </select></div>
+      <div id="schedWeekdayWrap" style="display:none"><label>Day</label>
+        <select id="schedWeekday">
+          <option value="0">Sunday</option><option value="1">Monday</option><option value="2">Tuesday</option>
+          <option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option><option value="6">Saturday</option>
+        </select></div>
+      <div><label>Time (server local)</label>
+        <input id="schedTime" type="time" value="02:00" style="width:130px"></div>
+      <div><label>Keep last N (0 = all)</label>
+        <input id="schedKeep" type="number" min="0" max="365" value="7" style="width:90px"></div>
+    </div>
+    <label class="toggle" style="margin-top:12px"><input type="checkbox" id="schedSync"> Sync to backup destination after each backup</label>
+    <div class="modal-foot">
+      <button onclick="closeSched()">Cancel</button>
+      <button class="primary" onclick="saveSched()">Save schedule</button>
+    </div>
+  </div>
+</div>
+
+<!-- Logs drawer -->
+<div class="drawer" id="drawer">
+  <div class="drawer-head">
+    <h3 id="drawerTitle">Logs</h3>
+    <span id="drawerActions"></span>
+    <button class="icon-btn" onclick="closeDrawer()" title="Close">✕</button>
+  </div>
+  <pre id="drawerLogs"></pre>
+  <div id="drawerBody"></div>
+</div>
+
+<!-- Settings drawer (admin) -->
+<div class="drawer" id="settingsDrawer">
+  <div class="drawer-head">
+    <h3>Settings</h3>
+    <button class="icon-btn" onclick="closeSettings()" title="Close">✕</button>
+  </div>
+  <div id="settingsBody" style="flex:1;overflow:auto;padding:16px 18px"></div>
+</div>
+
+<div id="toasts"></div>
+
+<script>
+/* =====================================================================
+   Data layer — tries the real API, falls back to mock data.
+   Backend contract (phase 2):  GET /api/state  →  { servers: [...] }
+   ===================================================================== */
+const MOCK = {
+  servers: [
+    {
+      id: "srv-1", name: "prod-web-01", group: "Production", host: "10.0.1.11", online: true,
+      cpu: 34, mem: 61, dockerVersion: "27.3.1",
+      firewall: { tool: "ufw", active: true, detail: "12 rule(s)" },
+      info: { hostname: "prod-web-01", ips: ["10.0.1.11"], kernel: "6.8.0-45-generic", uptime: "31d 2h",
+        interfaces: [{ name: "eth0", ip: "10.0.1.11", cidr: 24 }, { name: "docker0", ip: "172.17.0.1", cidr: 16 }, { name: "wg0", ip: "10.9.0.2", cidr: 32 }] },
+      mounts: [
+        { device: "/dev/sda2", mount: "/", sizeGb: 234.1, usedPct: 62 },
+        { device: "/dev/sdb1", mount: "/data", sizeGb: 1863.0, usedPct: 88 }
+      ],
+      backupDest: "backup@10.0.9.5:/srv/timeshift/prod-web-01",
+      schedule: { enabled: true, freq: "daily", hour: 2, minute: 0, weekday: 0, sync: true, keep: 7 },
+      backups: { tool: "timeshift", configured: true, device: "/dev/sda2", snapshots: [
+        { name: "2026-07-06_02-00-01", tags: "D", desc: "Daily scheduled" },
+        { name: "2026-07-05_23-14-08", tags: "O", desc: "DockFleet pre-update" }
+      ] },
+      osUpdates: { os: "Ubuntu 24.04.2 LTS", manager: "apt", packages: 3, security: 1, rebootRequired: true,
+        list: [
+          { name: "libssl3", current: "3.0.13-1", next: "3.0.14-1", security: true },
+          { name: "curl", current: "8.5.0-2", next: "8.6.0-1", security: false },
+          { name: "vim", current: "9.1.0016-1", next: "9.1.0500-1", security: false }
+        ] },
+      ports: [
+        { port: 22, proto: "tcp", via: "", source: "host" },
+        { port: 80, proto: "tcp", via: "nginx-proxy", source: "docker" },
+        { port: 443, proto: "tcp", via: "nginx-proxy", source: "docker" },
+        { port: 8080, proto: "tcp", via: "webapp", source: "docker" }
+      ],
+      containers: [
+        { id: "c1", name: "nginx-proxy", image: "nginx", tag: "1.27", state: "running", uptime: "12d 4h", cpu: 2.1, mem: 128, update: "outdated", latest: "1.29" },
+        { id: "c2", name: "webapp", image: "ghcr.io/ash/webapp", tag: "v2.4.1", state: "running", uptime: "3d 11h", cpu: 11.4, mem: 512, update: "uptodate", composeFile: "/opt/webapp/docker-compose.yml", composeWorkdir: "/opt/webapp" },
+        { id: "c3", name: "redis-cache", image: "redis", tag: "7.4-alpine", state: "running", uptime: "12d 4h", cpu: 0.8, mem: 64, update: "uptodate" },
+        { id: "c4", name: "certbot", image: "certbot/certbot", tag: "latest", state: "exited", uptime: "—", cpu: 0, mem: 0, update: "unknown" }
+      ]
+    },
+    {
+      id: "srv-2", name: "prod-db-01", group: "Production", host: "10.0.1.20", online: true,
+      cpu: 58, mem: 82, dockerVersion: "27.3.1",
+      firewall: { tool: "firewalld", active: true, detail: "running" },
+      osUpdates: { os: "Rocky Linux 9.4", manager: "dnf", packages: 0, security: 0, rebootRequired: false },
+      ports: [
+        { port: 22, proto: "tcp", via: "", source: "host" },
+        { port: 5432, proto: "tcp", via: "postgres", source: "docker" },
+        { port: 6432, proto: "tcp", via: "pgbouncer", source: "docker" }
+      ],
+      containers: [
+        { id: "c5", name: "postgres", image: "postgres", tag: "16.3", state: "running", uptime: "31d 2h", cpu: 18.2, mem: 2048, update: "outdated", latest: "16.6" },
+        { id: "c6", name: "pgbouncer", image: "edoburu/pgbouncer", tag: "1.23", state: "running", uptime: "31d 2h", cpu: 1.1, mem: 32, update: "uptodate" },
+        { id: "c7", name: "backup-cron", image: "prodrigestivill/postgres-backup-local", tag: "16", state: "running", uptime: "31d 2h", cpu: 0.2, mem: 48, update: "uptodate" }
+      ]
+    },
+    {
+      id: "srv-3", name: "media-box", host: "192.168.1.42", online: true,
+      cpu: 12, mem: 44, dockerVersion: "26.1.4",
+      firewall: { tool: "iptables", active: false, detail: "" },
+      ports: [
+        { port: 22, proto: "tcp", via: "", source: "host" },
+        { port: 8096, proto: "tcp", via: "jellyfin", source: "docker" },
+        { port: 8989, proto: "tcp", via: "sonarr", source: "docker" },
+        { port: 8081, proto: "tcp", via: "qbittorrent", source: "docker" },
+        { port: 51820, proto: "udp", via: "", source: "host" }
+      ],
+      containers: [
+        { id: "c8", name: "jellyfin", image: "jellyfin/jellyfin", tag: "10.9.11", state: "running", uptime: "6d 20h", cpu: 4.6, mem: 890, update: "outdated", latest: "10.10.3" },
+        { id: "c9", name: "sonarr", image: "linuxserver/sonarr", tag: "latest", state: "running", uptime: "6d 20h", cpu: 1.9, mem: 310, update: "outdated", latest: "new digest" },
+        { id: "c10", name: "qbittorrent", image: "linuxserver/qbittorrent", tag: "latest", state: "paused", uptime: "2d 1h", cpu: 0, mem: 120, update: "uptodate" }
+      ]
+    },
+    {
+      id: "srv-4", name: "staging-01", host: "10.0.2.5", online: false,
+      cpu: 0, mem: 0, dockerVersion: "—",
+      containers: [
+        { id: "c11", name: "webapp-staging", image: "ghcr.io/ash/webapp", tag: "v2.5.0-rc1", state: "exited", uptime: "—", cpu: 0, mem: 0, update: "unknown" }
+      ]
+    }
+  ]
+};
+
+let state = { servers: [] };
+let selectedServer = null;   // null = all servers
+let live = false;            // true when a real backend is reachable
+let pollTimer = null;
+let me = { role: "admin" };  // current user; overwritten by /api/auth/me when live
+
+async function initAuth() {
+  try {
+    const r = await fetch("/api/auth/me");
+    if (r.status === 401) { location.href = "/login"; return false; }
+    me = await r.json();
+    $("whoami").innerHTML = `${me.username}<span class="role-badge">${me.role}</span>`;
+    if (me.role === "viewer") document.body.classList.add("role-viewer");
+    if (me.role === "admin") $("settingsBtn").style.display = "";
+  } catch { /* demo mode — no backend */ }
+  return true;
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  $("logoutBtn").addEventListener("click", async () => {
+    try { await fetch("/api/auth/logout", { method: "POST" }); } catch {}
+    location.href = "/login";
+  });
+  $("settingsBtn").addEventListener("click", openSettings);
+});
+
+async function loadState() {
+  try {
+    const r = await fetch("/api/state", { signal: AbortSignal.timeout(2500) });
+    if (!r.ok) throw new Error();
+    state = await r.json();
+    if (!live) {
+      live = true;
+      pollTimer = setInterval(loadState, 10000);
+    }
+  } catch {
+    if (!live) state = JSON.parse(JSON.stringify(MOCK)); // demo mode
+  }
+  sortServers();
+  notifyNewEvents();
+  render();
+}
+
+/* ---------------- Helpers ---------------- */
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+function allContainers() {
+  return state.servers.flatMap((s) => s.containers.map((c) => ({ ...c, server: s })));
+}
+
+function toast(msg, cls = "") {
+  const el = document.createElement("div");
+  el.className = "toast " + cls;
+  el.textContent = msg;
+  $("toasts").appendChild(el);
+  setTimeout(() => el.remove(), 3500);
+}
+
+/* ---------------- Rendering ---------------- */
+function render() {
+  renderSidebar();
+  renderCards();
+  renderServerPanel();
+  renderTable();
+  renderBackups();
+}
+
+function backupServers() {
+  return state.servers.filter((s) => !selectedServer || s.id === selectedServer);
+}
+function renderBackups() {
+  const rows = [];
+  let total = 0, anyTool = false, unconfigured = [];
+  for (const s of backupServers()) {
+    const b = s.backups;
+    if (b && b.tool === "timeshift") { anyTool = true; if (!b.configured) unconfigured.push(s.name); }
+    for (const snap of (b && b.snapshots) || []) {
+      total++;
+      rows.push(`
+      <tr class="row">
+        <td class="c-name">${esc(snap.name)}</td>
+        <td class="muted">${esc(s.name)}</td>
+        <td class="muted">${esc(snap.tags || "—")}</td>
+        <td class="muted">${esc(snap.desc || "")}</td>
+        <td><div class="actions">
+          <button class="icon-btn hide-viewer" title="Sync to backup server" onclick="backupAction('${s.id}','sync','${esc(snap.name)}')">sync</button>
+          <button class="icon-btn hide-viewer" title="Restore (reboots server)" onclick="backupRestore('${s.id}','${esc(snap.name)}')">restore</button>
+          <button class="icon-btn hide-viewer" title="Delete snapshot" onclick="backupDelete('${s.id}','${esc(snap.name)}')">delete</button>
+        </div></td>
+      </tr>`);
+    }
+  }
+  $("backupTitle").textContent = selectedServer
+    ? state.servers.find((s) => s.id === selectedServer).name + " — System backups"
+    : "System backups";
+  const selSrv = selectedServer && state.servers.find((s) => s.id === selectedServer);
+  const dest = selSrv && selSrv.backupDest;
+  const sched = selSrv && scheduleSummary(selSrv.schedule);
+  $("backupMeta").textContent = total + " snapshot(s)" +
+    (dest ? " · dest: " + dest : "") + (sched ? " · " + sched : "");
+
+  if (!rows.length) {
+    const msg = !anyTool
+      ? "No snapshot tool detected — install timeshift on the server (sudo apt install timeshift) and configure a snapshot device."
+      : unconfigured.length
+      ? "timeshift is installed but not configured — run “sudo timeshift --list” on the server to set a snapshot device."
+      : "No snapshots yet — click “Create backup”.";
+    $("backupBody").innerHTML = `<tr><td colspan="5" class="empty">${esc(msg)}</td></tr>`;
+    return;
+  }
+  $("backupBody").innerHTML = rows.join("");
+}
+
+async function backupAction(serverId, action, name, route = "action") {
+  if (!live) { toast(`${action} ${name || ""} (demo)`, "ok"); return; }
+  try {
+    const r = await fetch("/api/backups/" + route, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ serverId, action, name }),
+    });
+    if (!r.ok) throw new Error((await r.json()).error || r.status);
+    toast(`${action} queued — watch Recent activity`, action === "restore" ? "warn" : "ok");
+  } catch (e) { toast("Failed: " + e.message, "warn"); }
+}
+async function createBackup() {
+  const s = selectedServer ? state.servers.find((x) => x.id === selectedServer) : null;
+  if (!s) { toast("Select a server first (left sidebar)", "warn"); return; }
+  const comment = prompt("Backup description (optional):", "DockFleet manual backup");
+  if (comment === null) return;
+  if (!live) { toast("Backup created (demo)", "ok"); return; }
+  try {
+    const r = await fetch("/api/backups/action", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ serverId: s.id, action: "create", comment }),
+    });
+    if (!r.ok) throw new Error((await r.json()).error || r.status);
+    toast("Backup queued — watch Recent activity", "ok");
+  } catch (e) { toast("Failed: " + e.message, "warn"); }
+}
+function backupDelete(serverId, name) {
+  if (!confirm(`Delete snapshot ${name}? This cannot be undone.`)) return;
+  backupAction(serverId, "delete", name, "destructive");
+}
+function backupRestore(serverId, name) {
+  const s = state.servers.find((x) => x.id === serverId);
+  if (!confirm(`Restore ${s ? s.name : "server"} to snapshot ${name}?\n\n⚠ This rolls the ENTIRE system back and REBOOTS the server. Anything changed since this snapshot is lost.`)) return;
+  if (!confirm("Are you absolutely sure? The server will go offline while it reboots.")) return;
+  backupAction(serverId, "restore", name, "destructive");
+}
+async function configBackupDest() {
+  const s = selectedServer ? state.servers.find((x) => x.id === selectedServer) : null;
+  if (!s) { toast("Select a server first (left sidebar)", "warn"); return; }
+  const dest = prompt("rsync destination for backups (user@backup-server:/path):", s.backupDest || "");
+  if (dest === null) return;
+  const keyPath = prompt("SSH private key path on the server (blank = default agent key):", s.backupKey || "");
+  if (keyPath === null) return;
+  if (!live) { toast("Destination saved (demo)", "ok"); return; }
+  try {
+    const r = await fetch("/api/backups/config", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ serverId: s.id, dest, keyPath }),
+    });
+    if (!r.ok) throw new Error((await r.json()).error || r.status);
+    toast("Backup destination saved", "ok");
+    loadState();
+  } catch (e) { toast("Failed: " + e.message, "warn"); }
+}
+
+/* ---- backup schedule ---- */
+const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+function scheduleSummary(sc) {
+  if (!sc || !sc.enabled) return "";
+  const t = String(sc.hour).padStart(2, "0") + ":" + String(sc.minute).padStart(2, "0");
+  const when = sc.freq === "weekly" ? `${DAYS[sc.weekday]} ${t}` : `daily ${t}`;
+  return `auto: ${when}${sc.sync ? " +sync" : ""}${sc.keep ? " keep " + sc.keep : ""}`;
+}
+function schedFreqChange() {
+  $("schedWeekdayWrap").style.display = $("schedFreq").value === "weekly" ? "" : "none";
+}
+function openSched() {
+  const s = selectedServer ? state.servers.find((x) => x.id === selectedServer) : null;
+  if (!s) { toast("Select a server first (left sidebar)", "warn"); return; }
+  window._schedServer = s.id;
+  $("schedFor").textContent = "For " + s.name;
+  const sc = s.schedule || {};
+  $("schedEnabled").checked = !!sc.enabled;
+  $("schedFreq").value = sc.freq || "daily";
+  $("schedWeekday").value = sc.weekday || 0;
+  $("schedTime").value = (String(sc.hour ?? 2).padStart(2, "0")) + ":" + (String(sc.minute ?? 0).padStart(2, "0"));
+  $("schedKeep").value = sc.keep ?? 7;
+  $("schedSync").checked = !!sc.sync;
+  schedFreqChange();
+  $("schedModal").classList.add("open");
+}
+function closeSched() { $("schedModal").classList.remove("open"); }
+async function saveSched() {
+  const [h, m] = $("schedTime").value.split(":").map(Number);
+  const schedule = {
+    enabled: $("schedEnabled").checked,
+    freq: $("schedFreq").value,
+    hour: h || 0, minute: m || 0,
+    weekday: +$("schedWeekday").value,
+    sync: $("schedSync").checked,
+    keep: +$("schedKeep").value || 0,
+  };
+  if (!live) { toast("Schedule saved (demo)", "ok"); closeSched(); return; }
+  try {
+    const r = await fetch("/api/backups/schedule", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ serverId: window._schedServer, schedule }),
+    });
+    if (!r.ok) throw new Error((await r.json()).error || r.status);
+    toast(schedule.enabled ? "Automatic backups scheduled" : "Schedule disabled", "ok");
+    closeSched();
+    loadState();
+  } catch (e) { toast("Failed: " + e.message, "warn"); }
+}
+
+function renderServerPanel() {
+  const panel = $("serverPanel");
+  const s = selectedServer && state.servers.find((x) => x.id === selectedServer);
+  if (!s) { panel.style.display = "none"; return; }
+  panel.style.display = "block";
+
+  const fw = s.firewall;
+  const fwBadge = !fw || fw.tool === "unknown"
+    ? `<span class="fw unk">🛡 Firewall: unknown${fw && fw.detail ? " — " + esc(fw.detail) : ""}</span>`
+    : fw.active
+    ? `<span class="fw on">🛡 ${esc(fw.tool)} active${fw.detail ? " — " + esc(fw.detail) : ""}</span>`
+    : `<span class="fw off">🛡 ${esc(fw.tool)} inactive</span>`;
+
+  const os = s.osUpdates;
+  const osBadge = !os || os.packages < 0
+    ? `<span class="fw unk">📦 OS updates: unknown</span>`
+    : os.packages === 0
+    ? `<span class="fw on">📦 OS up to date</span>`
+    : `<span class="fw ${os.security ? "off" : "warn"}" style="cursor:pointer" title="Click to list pending updates" onclick="showOsUpdates('${s.id}')">📦 ${os.packages} OS update(s)${os.security ? " — " + os.security + " security" : ""}</span>`;
+  const rebootBadge = os && os.rebootRequired ? `<span class="fw off">⟳ reboot required</span>` : "";
+
+  const ports = s.ports || [];
+  const dockerPorts = ports.filter((p) => p.source === "docker");
+  const hostPorts = ports.filter((p) => p.source === "host");
+  const chip = (p) =>
+    `<span class="chip ${p.source}">${p.port}<span class="proto">/${esc(p.proto)}</span>${p.via ? ` <span class="via">→ ${esc(p.via)}</span>` : ""}</span>`;
+
+  panel.innerHTML = `
+    <div class="panel-head">
+      <h3>${esc(s.name)}</h3>
+      <span class="meta">${esc(s.host)}${os && os.os ? " · " + esc(os.os) : ""} · Docker ${esc(s.dockerVersion)} · ${s.online ? "online" : "offline"}</span>
+      <span style="flex:1"></span>
+      ${fwBadge} ${osBadge} ${rebootBadge}
+      ${os && os.packages > 0 ? `<button onclick="osUpdate('${s.id}')" title="Create a restore point, then upgrade all OS packages">⬆ Update OS</button>` : ""}
+      <button class="danger" onclick="removeServer('${s.id}')">Remove server</button>
+    </div>
+    <h4>System</h4>
+    ${(() => {
+      const info = s.info || {};
+      const rows = [];
+      if (info.hostname) rows.push(["Hostname", esc(info.hostname)]);
+      const ifaces = info.interfaces || [];
+      if (ifaces.length) {
+        rows.push(["Adapters", ifaces.map((i) =>
+          `<span class="adapter"><b>${esc(i.name)}</b> ${esc(i.ip)}${i.cidr ? "/" + i.cidr : ""}</span>`).join("")]);
+      } else if ((info.ips || []).length) {
+        rows.push(["IP", (info.ips).map(esc).join(", ")]);
+      }
+      if (s.remoteIp && !(info.ips || []).includes(s.remoteIp)) rows.push(["Agent source IP", esc(s.remoteIp)]);
+      if (info.kernel) rows.push(["Kernel", esc(info.kernel)]);
+      if (s.dockerVersion) rows.push(["Docker", esc(s.dockerVersion)]);
+      if (info.uptime) rows.push(["Uptime", esc(info.uptime)]);
+      rows.push(["Load", `CPU ${s.cpu}% · Mem ${s.mem}%`]);
+      if (!rows.length) return '<div class="muted">not reported yet</div>';
+      return `<div class="sysinfo">${rows.map(([k, v]) =>
+        `<div class="sysrow"><span class="sk">${k}</span><span class="sv">${v}</span></div>`).join("")}</div>`;
+    })()}
+    ${(s.mounts && s.mounts.length) ? `
+    <h4>Disks / mounts</h4>
+    <div class="mounts">${s.mounts.map((m) => `
+      <div class="mount">
+        <span class="mount-path">${esc(m.mount)}</span>
+        <span class="muted">${esc(m.device)} · ${m.sizeGb} GB</span>
+        <span class="bar mount-bar"><i style="width:${m.usedPct}%" class="${m.usedPct > 85 ? "hot" : ""}"></i></span>
+        <span class="mount-pct ${m.usedPct > 85 ? "hot-txt" : "muted"}">${m.usedPct}%</span>
+      </div>`).join("")}</div>` : ""}
+    <h4>Published ports (Docker)</h4>
+    <div class="chips">${dockerPorts.length ? dockerPorts.map(chip).join("") : '<span class="muted">none</span>'}</div>
+    <h4>Other listening ports (host)</h4>
+    <div class="chips">${hostPorts.length ? hostPorts.map(chip).join("") : '<span class="muted">none detected</span>'}</div>
+    <h4>Recent activity</h4>
+    <div class="events">${(s.events && s.events.length)
+      ? s.events.slice(-6).reverse().map((e) =>
+          `<div class="event ${e.ok ? "" : "fail"}"><span class="muted">${new Date(e.ts).toLocaleTimeString()}</span> ${esc(e.message)}</div>`
+        ).join("")
+      : '<span class="muted">No activity yet — actions and OS updates report here.</span>'}</div>`;
+}
+
+/* --- toast events as they arrive --- */
+let lastEventTs = null;
+function notifyNewEvents() {
+  let max = lastEventTs || 0;
+  for (const s of state.servers)
+    for (const e of s.events || []) {
+      if (lastEventTs !== null && e.ts > lastEventTs)
+        toast(`${s.name}: ${e.message}`, e.ok ? "ok" : "warn");
+      if (e.ts > max) max = e.ts;
+    }
+  lastEventTs = max;
+}
+
+let manageMode = false;
+const selectedIds = new Set();
+
+function serverItemHtml(s) {
+  const upd = s.containers.filter((c) => c.update === "outdated").length;
+  const checked = selectedIds.has(s.id) ? "checked" : "";
+  const clickAttr = manageMode ? `onclick="toggleSelect('${s.id}')"` : `onclick="selectServer('${s.id}')"`;
+  const dragAttrs = manageMode ? "" :
+    `draggable="true" ondragstart="dragServer(event,'${s.id}')" ondragover="event.preventDefault()" ondrop="dropServer(event,'${s.id}')"`;
+  return `
+    <div class="server-item ${selectedServer === s.id && !manageMode ? "active" : ""} ${manageMode && selectedIds.has(s.id) ? "picked" : ""}" ${clickAttr} ${dragAttrs}>
+      <div class="server-top">
+        ${manageMode ? `<input type="checkbox" ${checked} onclick="event.stopPropagation();toggleSelect('${s.id}')">` : `<span class="dot ${s.online ? "online" : "offline"}"></span>`}
+        <span class="server-name">${esc(s.name)}</span>
+        <span class="server-count">${s.containers.length}${upd ? " · " + upd + "⬆" : ""}</span>
+      </div>
+      <div class="server-meta">${esc(s.host)} · Docker ${esc(s.dockerVersion)}</div>
+      <div class="bars" title="CPU ${s.cpu}% · Mem ${s.mem}%">
+        <span class="bar"><i style="width:${s.cpu}%" class="${s.cpu > 75 ? "hot" : ""}"></i></span>
+        <span class="bar"><i style="width:${s.mem}%" class="${s.mem > 75 ? "hot" : ""}"></i></span>
+      </div>
+    </div>`;
+}
+
+function renderSidebar() {
+  const list = $("serverList");
+  // group servers by their group label
+  const groups = new Map();
+  for (const s of state.servers) {
+    const g = s.group || "";
+    if (!groups.has(g)) groups.set(g, []);
+    groups.get(g).push(s);
+  }
+  const orderedGroups = [...groups.keys()].sort((a, b) => (a === "" ? 1 : b === "" ? -1 : a.localeCompare(b)));
+
+  let html = manageMode ? "" :
+    `<div class="server-item ${selectedServer === null ? "active" : ""}" onclick="selectServer(null)">
+       <div class="server-top"><span class="dot online"></span><span class="server-name">All servers</span>
+       <span class="server-count" title="${state.servers.length} server(s) · ${allContainers().length} container(s)">${state.servers.length}</span></div>
+     </div>`;
+
+  for (const g of orderedGroups) {
+    if (g !== "" || orderedGroups.length > 1)
+      html += `<div class="group-label">${g === "" ? "Ungrouped" : esc(g)}</div>`;
+    html += groups.get(g).map(serverItemHtml).join("");
+  }
+  list.innerHTML = html;
+
+  // manage bar
+  const bar = $("manageBar");
+  if (manageMode) {
+    bar.style.display = "flex";
+    bar.querySelector("#selCount").textContent = `${selectedIds.size} selected`;
+    bar.querySelectorAll("button.act").forEach((b) => (b.disabled = selectedIds.size === 0));
+  } else {
+    bar.style.display = "none";
+  }
+  $("manageToggle").textContent = manageMode ? "Done" : "Manage servers";
+}
+
+function toggleManage() {
+  manageMode = !manageMode;
+  selectedIds.clear();
+  render();
+}
+function toggleSelect(id) {
+  if (selectedIds.has(id)) selectedIds.delete(id); else selectedIds.add(id);
+  renderSidebar();
+}
+async function bulkDelete() {
+  const ids = [...selectedIds];
+  if (!ids.length) return;
+  if (!confirm(`Remove ${ids.length} server(s) from DockFleet? Their agents will stop being accepted.`)) return;
+  if (live) {
+    try {
+      const r = await fetch("/api/servers/delete", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ serverIds: ids }),
+      });
+      if (!r.ok) throw new Error((await r.json()).error || r.status);
+    } catch (e) { toast("Failed: " + e.message, "warn"); return; }
+  }
+  state.servers = state.servers.filter((s) => !selectedIds.has(s.id));
+  selectedIds.clear();
+  toast(`${ids.length} server(s) removed`, "ok");
+  if (live) loadState(); else render();
+}
+async function bulkGroup() {
+  const ids = [...selectedIds];
+  if (!ids.length) return;
+  const group = prompt("Group name (leave blank to ungroup):", "");
+  if (group === null) return;
+  if (live) {
+    try {
+      const r = await fetch("/api/servers/group", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ serverIds: ids, group }),
+      });
+      if (!r.ok) throw new Error((await r.json()).error || r.status);
+    } catch (e) { toast("Failed: " + e.message, "warn"); return; }
+  }
+  for (const s of state.servers) if (selectedIds.has(s.id)) s.group = group;
+  toast(group ? `Grouped into “${group}”` : "Ungrouped", "ok");
+  if (live) loadState(); else render();
+}
+
+function renderCards() {
+  const cs = allContainers();
+  const online = state.servers.filter((s) => s.online).length;
+  const running = cs.filter((c) => c.state === "running").length;
+  const updates = cs.filter((c) => c.update === "outdated").length;
+  const offline = state.servers.length - online;
+  $("cards").innerHTML = `
+    <div class="card"><div class="label">Servers online</div>
+      <div class="value ${offline ? "yellow" : "green"}">${online}<span class="muted" style="font-size:14px"> / ${state.servers.length}</span></div></div>
+    <div class="card"><div class="label">Containers running</div>
+      <div class="value">${running}<span class="muted" style="font-size:14px"> / ${cs.length}</span></div></div>
+    <div class="card"><div class="label">Updates available</div>
+      <div class="value ${updates ? "yellow" : "green"}">${updates}</div></div>
+    <div class="card"><div class="label">Images tracked</div>
+      <div class="value">${new Set(cs.map((c) => c.image)).size}</div></div>`;
+}
+
+function renderTable() {
+  const q = $("search").value.toLowerCase();
+  const st = $("stateFilter").value;
+  const updOnly = $("updatesOnly").checked;
+
+  let rows = allContainers().filter((c) => {
+    if (selectedServer && c.server.id !== selectedServer) return false;
+    if (st && c.state !== st) return false;
+    if (updOnly && c.update !== "outdated") return false;
+    if (q && !(c.name + c.image + c.tag + c.server.name).toLowerCase().includes(q)) return false;
+    return true;
+  });
+
+  $("viewTitle").textContent = selectedServer
+    ? state.servers.find((s) => s.id === selectedServer).name + " — Docker containers"
+    : "Docker containers";
+
+  if (!rows.length) {
+    $("tbody").innerHTML = `<tr><td colspan="8" class="empty">No containers match.</td></tr>`;
+    return;
+  }
+
+  $("tbody").innerHTML = rows.map((c) => {
+    const updBadge =
+      c.update === "outdated"
+        ? `<span class="badge outdated" title="Latest: ${esc(c.latest || "?")}"><span class="bdot"></span>Update: ${esc(c.latest || "available")}</span>`
+        : c.update === "uptodate"
+        ? `<span class="badge uptodate">Up to date</span>`
+        : `<span class="badge unknown">Unknown</span>`;
+    return `
+    <tr class="row">
+      <td class="c-name"><a class="cname-link" onclick="openContainer('${c.server.id}','${c.id}')" title="Open container — edit files, view logs">${esc(c.name)}</a></td>
+      <td class="muted">${esc(c.server.name)}</td>
+      <td class="c-image">${(() => {
+        const link = imageLink(c.image);
+        const label = `<b>${esc(c.image)}</b>:${esc(c.tag)}`;
+        return link ? `<a class="img-link" href="${link}" target="_blank" rel="noopener" title="Open image page">${label}</a>` : label;
+      })()}</td>
+      <td><span class="badge ${c.state}"><span class="bdot"></span>${c.state}</span></td>
+      <td class="muted">${esc(c.uptime)}</td>
+      <td class="muted">${c.state === "running" ? c.cpu + "% · " + c.mem + " MB" : "—"}</td>
+      <td>${updBadge}</td>
+      <td>
+        <div class="actions">
+          ${c.update === "outdated" ? `<button class="icon-btn upd" title="Pull update & recreate" onclick="act('update','${c.id}')">⬆</button>` : ""}
+          <button class="icon-btn" title="Restart" onclick="act('restart','${c.id}')">⟳</button>
+          <button class="icon-btn" title="${c.state === "running" ? "Stop" : "Start"}" onclick="act('${c.state === "running" ? "stop" : "start"}','${c.id}')">${c.state === "running" ? "⏹" : "▶"}</button>
+          <button class="icon-btn" title="Logs" onclick="showLogs('${c.id}')">≡</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join("");
+}
+
+/* ---------------- Actions (stubbed → phase 2 hits /api/...) ---------------- */
+/** Best-guess web page for an image: GitHub for ghcr.io, Docker Hub otherwise. */
+function imageLink(image) {
+  if (image.startsWith("ghcr.io/")) {
+    const p = image.slice(8).split("/");
+    return p.length >= 2 ? `https://github.com/${p[0]}/${p[1]}` : null;
+  }
+  const first = image.split("/")[0];
+  if (first.includes(".") || first.includes(":")) return null; // unknown registry
+  if (!image.includes("/")) return `https://hub.docker.com/_/${image}`;
+  return `https://hub.docker.com/r/${image}`;
+}
+
+function findContainer(id) {
+  for (const s of state.servers) {
+    const c = s.containers.find((x) => x.id === id);
+    if (c) return { c, s };
+  }
+  return {};
+}
+
+async function act(action, id) {
+  const { c, s } = findContainer(id);
+  if (!c) return;
+  if (live) {
+    try {
+      const r = await fetch("/api/containers/action", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ serverId: s.id, containerId: id, action })
+      });
+      if (!r.ok) throw new Error((await r.json()).error || r.status);
+      toast(`${action} → ${c.name} on ${s.name} (queued for agent)`, action === "update" ? "warn" : "ok");
+    } catch (e) { toast(`Failed: ${e.message}`, "warn"); }
+    return;
+  }
+  // demo mode: mutate locally
+  if (action === "stop") { c.state = "exited"; c.uptime = "—"; c.cpu = 0; c.mem = 0; }
+  if (action === "start" || action === "restart") { c.state = "running"; c.uptime = "0m"; }
+  if (action === "update") { c.update = "uptodate"; c.tag = c.latest && !c.latest.includes("digest") ? c.latest : c.tag; delete c.latest; c.uptime = "0m"; }
+  toast(`${action} → ${c.name} on ${s.name} (demo)`, action === "update" ? "warn" : "ok");
+  render();
+}
+
+$("checkUpdates").addEventListener("click", async () => {
+  if (!live) { toast("Checked registries — demo data unchanged", "ok"); return; }
+  toast("Checking registries…");
+  try {
+    const r = await fetch("/api/check-updates", { method: "POST" });
+    const j = await r.json();
+    await loadState();
+    toast(`Checked ${j.checked} image(s) — ${j.outdated} outdated, ${j.failed} failed`, j.outdated ? "warn" : "ok");
+  } catch (e) { toast("Update check failed: " + e.message, "warn"); }
+});
+
+/* ---------------- Drawer helpers ---------------- */
+function drawerPre() { $("drawerLogs").style.display = "block"; $("drawerBody").style.display = "none"; $("drawerBody").innerHTML = ""; }
+function drawerHtml(html) { $("drawerLogs").style.display = "none"; $("drawerBody").style.display = "block"; $("drawerBody").innerHTML = html; }
+function closeDrawer() { $("drawer").classList.remove("open"); }
+
+/* ---------------- Logs drawer ---------------- */
+async function showLogs(id) {
+  const { c, s } = findContainer(id);
+  if (!c) return;
+  $("drawerTitle").textContent = `${c.name} @ ${s.name} — logs`;
+  $("drawerActions").innerHTML = "";
+  drawerPre();
+  $("drawer").classList.add("open");
+  if (!live) {
+    const now = new Date(), lines = [];
+    for (let i = 20; i > 0; i--) {
+      const t = new Date(now - i * 47000).toISOString();
+      lines.push(`${t}  ${["INFO", "INFO", "INFO", "WARN"][i % 4]}  ${c.name}: ${["request handled in 12ms", "healthcheck ok", "connection accepted", "retrying upstream (attempt 2)"][i % 4]}`);
+    }
+    $("drawerLogs").textContent = lines.join("\n");
+    return;
+  }
+  $("drawerLogs").textContent = "Loading logs…";
+  try {
+    const r = await fetch("/api/containers/logs", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ serverId: s.id, containerId: c.id }),
+    });
+    const j = await r.json();
+    $("drawerLogs").textContent = r.ok ? (j.content || "(no output)") : ("Error: " + (j.error || r.status));
+  } catch (e) { $("drawerLogs").textContent = "Error: " + e.message; }
+}
+
+/* ---------------- Container detail + file editor ---------------- */
+function openContainer(serverId, containerId) {
+  const s = state.servers.find((x) => x.id === serverId);
+  const c = s && s.containers.find((x) => x.id === containerId);
+  if (!c) return;
+  $("drawerTitle").textContent = `${c.name} @ ${s.name}`;
+  $("drawerActions").innerHTML = "";
+
+  // suggested files: compose + env (host-side, from labels) and common in-container configs
+  const files = [];
+  if (c.composeFile) {
+    files.push({ label: "docker-compose.yml", path: c.composeFile, host: true });
+    const dir = c.composeFile.replace(/\/[^/]*$/, "");
+    files.push({ label: ".env (next to compose)", path: dir + "/.env", host: true });
+  } else if (c.composeWorkdir) {
+    files.push({ label: "docker-compose.yml", path: c.composeWorkdir + "/docker-compose.yml", host: true });
+    files.push({ label: ".env", path: c.composeWorkdir + "/.env", host: true });
+  }
+  files.push({ label: ".env (in container)", path: "/app/.env", host: false });
+
+  const quick = files.map((f, i) =>
+    `<button class="qfile" onclick="ceLoad(${i})">${esc(f.label)}</button>`).join("");
+
+  drawerHtml(`
+    <div class="cedit">
+      <div class="ce-meta">
+        <div><b>Image:</b> ${esc(c.image)}:${esc(c.tag)}</div>
+        <div><b>State:</b> ${esc(c.state)} · ${esc(c.uptime)}</div>
+        ${c.composeFile ? `<div><b>Compose:</b> <code>${esc(c.composeFile)}</code></div>` : ""}
+      </div>
+      <div class="ce-actions">
+        <button onclick="showLogs('${c.id}')">View logs</button>
+        <button onclick="act('restart','${c.id}')">Restart</button>
+        <button onclick="act('${c.state === "running" ? "stop" : "start"}','${c.id}')">${c.state === "running" ? "Stop" : "Start"}</button>
+      </div>
+      <h4>Edit a file <span class="muted" style="font-weight:400">— saved in place on the server</span></h4>
+      <div class="qfiles">${quick}</div>
+      <div class="ce-open">
+        <select id="ceRoot" onchange="ceBrowseRoot()">
+          <option value="host">Host path</option>
+          <option value="container">Inside container</option>
+        </select>
+        <input id="cePath" type="text" placeholder="/opt/app/docker-compose.yml" spellcheck="false"
+               onkeydown="if(event.key==='Enter')ceOpen()">
+        <button onclick="ceBrowseHere()" title="Browse files">Browse</button>
+        <button onclick="ceOpen()">Open</button>
+      </div>
+      <div id="ceBrowser" class="ce-browser" style="display:none"></div>
+      <div id="ceStatus" class="muted"></div>
+      <textarea id="ceText" class="ce-text" spellcheck="false" placeholder="Pick a file above or type a path, then Open."></textarea>
+      <div class="ce-save">
+        <span id="ceCurrent" class="muted"></span>
+        <button class="primary" id="ceSaveBtn" onclick="ceSave()" disabled>Save changes</button>
+      </div>
+    </div>`);
+  window._ce = { serverId, containerId, container: c, files, cur: null, dirty: false };
+  $("drawer").classList.add("open");
+  const t = $("ceText");
+  t.addEventListener("input", () => { window._ce.dirty = true; $("ceSaveBtn").disabled = false; });
+}
+
+function ceLoad(i) {
+  const f = window._ce.files[i];
+  $("ceRoot").value = f.host ? "host" : "container";
+  $("cePath").value = f.path;
+  ceOpen();
+}
+
+/* ---- file browser ---- */
+function dirname(p) { const q = p.replace(/\/+$/, ""); const i = q.lastIndexOf("/"); return i <= 0 ? "/" : q.slice(0, i); }
+function joinPath(dir, name) { return (dir === "/" ? "" : dir) + "/" + name; }
+
+function ceBrowseRoot() {
+  // reset the path box to a sensible root when switching host/container
+  const ce = window._ce, host = $("ceRoot").value === "host";
+  const c = ce && ce.container;
+  $("cePath").value = host ? (c && c.composeWorkdir ? c.composeWorkdir : "/") : "/";
+  $("ceBrowser").style.display = "none";
+}
+function ceBrowseHere() {
+  const p = $("cePath").value.trim();
+  // if a file path is in the box, browse its directory; else browse the path as a dir
+  ceBrowse(p && /\.[^/]+$/.test(p) ? dirname(p) : (p || "/"));
+}
+async function ceBrowse(dir) {
+  const ce = window._ce, host = $("ceRoot").value === "host";
+  const box = $("ceBrowser");
+  box.style.display = "block";
+  box.innerHTML = `<div class="muted" style="padding:8px">Listing ${esc(dir)}…</div>`;
+  if (!live) {
+    return renderBrowser(dir, [
+      { name: "docker-compose.yml", dir: false }, { name: ".env", dir: false }, { name: "config", dir: true },
+    ]);
+  }
+  try {
+    const r = await fetch("/api/containers/file/list", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ serverId: ce.serverId, containerId: ce.containerId, path: dir, host }),
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || r.status);
+    renderBrowser(j.path || dir, j.entries || []);
+  } catch (e) {
+    box.innerHTML = `<div style="color:var(--red);padding:8px">Could not list: ${esc(e.message)}</div>`;
+  }
+}
+function renderBrowser(dir, entries) {
+  const box = $("ceBrowser");
+  const up = dir !== "/" ? `<div class="fb-row" onclick="ceBrowse('${esc(dirname(dir)).replace(/'/g,"\\'")}')"><span class="fb-tag">up</span><span>..</span></div>` : "";
+  const rows = entries.map((e) => {
+    const full = joinPath(dir, e.name).replace(/'/g, "\\'");
+    return e.dir
+      ? `<div class="fb-row" onclick="ceBrowse('${esc(full)}')"><span class="fb-tag">dir</span><span>${esc(e.name)}/</span></div>`
+      : `<div class="fb-row file" onclick="cePick('${esc(full)}')"><span class="fb-tag file">file</span><span>${esc(e.name)}</span></div>`;
+  }).join("");
+  box.innerHTML =
+    `<div class="fb-head"><span class="mono">${esc(dir)}</span>
+       <button class="icon-btn" title="Close browser" onclick="$('ceBrowser').style.display='none'">✕</button></div>
+     <div class="fb-list">${up}${rows || '<div class="muted" style="padding:8px">empty</div>'}</div>`;
+}
+function cePick(path) {
+  $("cePath").value = path;
+  $("ceBrowser").style.display = "none";
+  ceOpen();
+}
+
+async function ceOpen() {
+  const ce = window._ce;
+  const path = $("cePath").value.trim();
+  if (!path) return;
+  const host = $("ceRoot").value === "host";
+  if (ce.dirty && !confirm("Discard unsaved changes to the current file?")) return;
+  $("ceStatus").textContent = "Loading " + path + "…";
+  $("ceText").value = "";
+  $("ceSaveBtn").disabled = true;
+  if (!live) {
+    $("ceText").value = host && path.endsWith("compose.yml")
+      ? "services:\n  webapp:\n    image: ghcr.io/ash/webapp:v2.4.1\n    ports:\n      - 8080:8080\n"
+      : "# demo mode — connect the backend to edit real files\nKEY=value\n";
+    ce.cur = { path, host }; ce.dirty = false;
+    $("ceStatus").textContent = "Loaded (demo)"; $("ceCurrent").textContent = (host ? "host:" : "container:") + path;
+    return;
+  }
+  try {
+    const r = await fetch("/api/containers/file/read", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ serverId: ce.serverId, containerId: ce.containerId, path, host }),
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || r.status);
+    $("ceText").value = j.content;
+    ce.cur = { path, host }; ce.dirty = false;
+    $("ceStatus").textContent = "";
+    $("ceCurrent").textContent = (host ? "host:" : "container:") + path;
+  } catch (e) {
+    $("ceStatus").innerHTML = `<span style="color:var(--red)">Could not open: ${esc(e.message)}</span>`;
+    $("ceCurrent").textContent = "";
+  }
+}
+
+async function ceSave() {
+  const ce = window._ce;
+  if (!ce || !ce.cur) return;
+  if (!confirm(`Save changes to ${ce.cur.path} on the server? This overwrites the file in place.`)) return;
+  if (!live) { toast("Saved (demo)", "ok"); ce.dirty = false; $("ceSaveBtn").disabled = true; return; }
+  $("ceSaveBtn").disabled = true;
+  $("ceStatus").textContent = "Saving…";
+  try {
+    const r = await fetch("/api/containers/file/write", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ serverId: ce.serverId, containerId: ce.containerId, path: ce.cur.path, host: ce.cur.host, content: $("ceText").value }),
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || r.status);
+    ce.dirty = false;
+    $("ceStatus").innerHTML = `<span style="color:var(--green)">Saved. Restart the container for changes to take effect if needed.</span>`;
+    toast("File saved on server", "ok");
+  } catch (e) {
+    $("ceSaveBtn").disabled = false;
+    $("ceStatus").innerHTML = `<span style="color:var(--red)">Save failed: ${esc(e.message)}</span>`;
+  }
+}
+
+function showOsUpdates(serverId) {
+  const s = state.servers.find((x) => x.id === serverId);
+  if (!s || !s.osUpdates) return;
+  const os = s.osUpdates;
+  $("drawerTitle").textContent = `${s.name} — pending OS updates (${os.manager})`;
+  $("drawerActions").innerHTML = os.packages > 0
+    ? `<button class="primary" title="Create a restore point, then upgrade all OS packages" onclick="closeDrawer(); osUpdate('${s.id}')">⬆ Update OS</button>`
+    : "";
+  drawerPre();
+  const list = os.list || [];
+  if (!list.length) {
+    $("drawerLogs").textContent =
+      "Package list not available.\n\nRestart the agent to pick up the latest agent code:\n  docker restart dockfleet-agent";
+  } else {
+    const w = Math.max(...list.map((p) => p.name.length), 10);
+    $("drawerLogs").textContent = list
+      .map((p) => `${p.security ? "⚠ " : "  "}${p.name.padEnd(w + 2)}${p.current ? p.current + " → " : ""}${p.next}${p.security ? "   [security]" : ""}`)
+      .join("\n");
+  }
+  $("drawer").classList.add("open");
+}
+
+/* ---------------- Sidebar / filters ---------------- */
+function selectServer(id) { selectedServer = id; render(); }
+
+/* --- drag to reorder servers (order saved in this browser) --- */
+let dragSrcId = null;
+function dragServer(e, id) { dragSrcId = id; e.dataTransfer.effectAllowed = "move"; }
+function dropServer(e, targetId) {
+  e.preventDefault();
+  if (!dragSrcId || dragSrcId === targetId) return;
+  const order = state.servers.map((s) => s.id);
+  order.splice(order.indexOf(targetId), 0, order.splice(order.indexOf(dragSrcId), 1)[0]);
+  try { localStorage.setItem("df-server-order", JSON.stringify(order)); } catch {}
+  dragSrcId = null;
+  sortServers();
+  render();
+}
+function sortServers() {
+  try {
+    const order = JSON.parse(localStorage.getItem("df-server-order") || "[]");
+    if (!order.length) return;
+    state.servers.sort((a, b) => {
+      const ia = order.indexOf(a.id), ib = order.indexOf(b.id);
+      return (ia < 0 ? 1e9 : ia) - (ib < 0 ? 1e9 : ib);
+    });
+  } catch {}
+}
+
+async function osUpdate(id) {
+  const s = state.servers.find((x) => x.id === id);
+  if (!s) return;
+  const n = s.osUpdates ? s.osUpdates.packages : "?";
+  const tool = (s.osUpdates && s.osUpdates.snapshotTool) || "";
+  let force = false;
+  if (tool) {
+    if (!confirm(`Update ${n} OS package(s) on ${s.name}?\n\nA restore point will be created first via ${tool}.\n\nProgress appears under “Recent activity”.`)) return;
+  } else {
+    if (!confirm(`⚠ No restore-point tool detected on ${s.name}.\n\nInstalling one first is strongly recommended, e.g.:\n  sudo apt install timeshift\n\nUpdate ${n} OS package(s) anyway, WITHOUT a restore point?`)) return;
+    if (!confirm(`Please confirm: you acknowledge that if this update breaks something on ${s.name}, there is no restore point to roll back to.`)) return;
+    force = true;
+  }
+  if (!live) { toast("OS update queued (demo)", "ok"); return; }
+  try {
+    const r = await fetch("/api/containers/action", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ serverId: id, containerId: "", action: "os-update", force }),
+    });
+    if (!r.ok) throw new Error((await r.json()).error || r.status);
+    toast(`OS update queued for ${s.name} — watch Recent activity`, "ok");
+  } catch (e) { toast("Failed: " + e.message, "warn"); }
+}
+
+async function removeServer(id) {
+  const s = state.servers.find((x) => x.id === id);
+  if (!s || !confirm(`Remove ${s.name} from DockFleet? Its agent will stop being accepted.`)) return;
+  if (live) {
+    try {
+      const r = await fetch("/api/servers/" + id, { method: "DELETE" });
+      if (!r.ok) throw new Error((await r.json()).error || r.status);
+    } catch (e) { toast("Failed: " + e.message, "warn"); return; }
+  }
+  state.servers = state.servers.filter((x) => x.id !== id);
+  selectedServer = null;
+  toast(`${s.name} removed`, "ok");
+  if (live) loadState(); else render();
+}
+$("search").addEventListener("input", renderTable);
+$("stateFilter").addEventListener("change", renderTable);
+$("updatesOnly").addEventListener("change", renderTable);
+
+/* ---------------- Add server modal ---------------- */
+let currentToken = null;   // real token once created (live mode)
+let enrolled = false;
+
+function openModal() {
+  currentToken = null;
+  enrolled = false;
+  $("newServerName").value = "";
+  updateCmd();
+  $("modal").classList.add("open");
+  $("newServerName").focus();
+}
+function closeModal() { $("modal").classList.remove("open"); }
+function updateCmd() {
+  if (enrolled) return; // token issued — freeze the command
+  if (live && !currentToken) {
+    $("enrollCmd").textContent = "Click “Add server” — the command with your enrollment token will appear here.";
+    return;
+  }
+  const url = live ? location.origin : "https://dockfleet.example.com";
+  $("enrollCmd").textContent = enrollCommand(url, currentToken || "df_demo_token");
+}
+function enrollCommand(url, token) {
+  return `docker run -d --name dockfleet-agent --restart unless-stopped \\
+  --pid=host --cap-add SYS_ADMIN --cap-add SYS_PTRACE \\
+  --security-opt apparmor=unconfined \\
+  -v /var/run/docker.sock:/var/run/docker.sock \\
+  -v /:/host:ro \\
+  -e DOCKFLEET_URL=${url} \\
+  -e DOCKFLEET_TOKEN=${token} \\
+  node:20-alpine sh -c "apk add --no-cache util-linux && wget -qO /agent.js ${url}/agent.js && node /agent.js"`;
+}
+$("newServerName").addEventListener("input", updateCmd);
+$("addServerBtn").addEventListener("click", openModal);
+$("modal").addEventListener("click", (e) => { if (e.target === $("modal")) closeModal(); });
+
+function copyCmd() {
+  navigator.clipboard.writeText($("enrollCmd").textContent).then(() => toast("Command copied", "ok"));
+}
+
+async function addServer() {
+  const name = $("newServerName").value.trim();
+  if (!name) { toast("Enter a server name first", "warn"); return; }
+  if (live) {
+    if (enrolled) { closeModal(); return; }
+    try {
+      const r = await fetch("/api/servers", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name })
+      });
+      if (!r.ok) throw new Error((await r.json()).error || r.status);
+      const j = await r.json();
+      currentToken = j.token;
+      $("enrollCmd").textContent = enrollCommand(location.origin, currentToken);
+      enrolled = true;
+      if (/localhost|127\.0\.0\.1/.test(location.hostname))
+        toast("Warning: you're on localhost — remote servers can't reach that URL. Open the dashboard via your LAN IP and re-copy.", "warn");
+      toast(`${name} enrolled — run the command on that server`, "ok");
+      loadState();
+    } catch (e) { toast("Failed: " + e.message, "warn"); }
+    return;
+  }
+  // demo mode
+  state.servers.push({
+    id: "srv-" + Date.now(), name, host: "pending…", online: false,
+    cpu: 0, mem: 0, dockerVersion: "—", containers: []
+  });
+  closeModal();
+  toast(`${name} added (demo)`, "ok");
+  render();
+}
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") { closeModal(); closeDrawer(); closeSettings(); closeSched(); }
+});
+
+/* ---------------- Settings: users + audit (admin) ---------------- */
+function closeSettings() { $("settingsDrawer").classList.remove("open"); }
+async function openSettings() {
+  $("settingsDrawer").classList.add("open");
+  await renderSettings();
+}
+async function renderSettings() {
+  const body = $("settingsBody");
+  body.innerHTML = "Loading…";
+  let users = [], audit = [];
+  try {
+    users = (await (await fetch("/api/users")).json()).users || [];
+    audit = (await (await fetch("/api/audit")).json()).entries || [];
+  } catch {}
+  body.innerHTML = `
+    <h4>Users &amp; roles</h4>
+    <table class="mini"><thead><tr><th>User</th><th>Role</th><th>MFA</th><th></th></tr></thead><tbody>
+    ${users.map((u) => `<tr>
+      <td>${esc(u.username)}${u.locked ? ' <span class="muted">(locked)</span>' : ""}</td>
+      <td><select onchange="setRole('${esc(u.username)}',this.value)">
+        ${["viewer","operator","admin"].map((r) => `<option ${u.role===r?"selected":""}>${r}</option>`).join("")}
+      </select></td>
+      <td>${u.mfaEnabled ? "✓" : "—"}</td>
+      <td class="right">
+        ${u.locked ? `<button class="icon-btn" title="Unlock" onclick="userAction('${esc(u.username)}',{unlock:true})">🔓</button>` : ""}
+        <button class="icon-btn" title="Reset MFA" onclick="userAction('${esc(u.username)}',{clearMfa:true})">↺MFA</button>
+        <button class="icon-btn" title="Delete user" onclick="delUser('${esc(u.username)}')">🗑</button>
+      </td></tr>`).join("")}
+    </tbody></table>
+    <div class="newuser">
+      <input id="nuName" placeholder="new username">
+      <select id="nuRole"><option value="viewer">viewer</option><option value="operator">operator</option><option value="admin">admin</option></select>
+      <input id="nuPass" type="password" placeholder="temp password (12+ chars)">
+      <button class="primary" onclick="addUser()">Add user</button>
+    </div>
+    <div class="muted" style="font-size:12px;margin-top:6px">New users must change their password and set up MFA at first login.</div>
+
+    <h4 style="margin-top:22px">Audit log <span class="muted" style="font-weight:400">— last ${audit.length}</span></h4>
+    <div class="auditlog">${audit.map((e) =>
+      `<div class="arow"><span class="muted">${new Date(e.ts).toLocaleString()}</span> <b>${esc(e.user)}</b> <span class="mono">${esc(e.action)}</span> ${esc(e.target||"")} <span class="${e.result==="ok"?"muted":"warnt"}">${esc(e.result)}</span> <span class="muted">${esc(e.ip)}</span></div>`
+    ).join("") || '<span class="muted">no entries</span>'}</div>`;
+}
+async function setRole(username, role) { await userAction(username, { role }); }
+async function userAction(username, body) {
+  try {
+    const r = await fetch("/api/users/" + encodeURIComponent(username), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (!r.ok) throw new Error((await r.json()).error || r.status);
+    toast("Updated " + username, "ok"); renderSettings();
+  } catch (e) { toast("Failed: " + e.message, "warn"); }
+}
+async function delUser(username) {
+  if (!confirm(`Delete user ${username}?`)) return;
+  try {
+    const r = await fetch("/api/users/" + encodeURIComponent(username), { method: "DELETE" });
+    if (!r.ok) throw new Error((await r.json()).error || r.status);
+    toast("Deleted " + username, "ok"); renderSettings();
+  } catch (e) { toast("Failed: " + e.message, "warn"); }
+}
+async function addUser() {
+  const username = $("nuName").value.trim(), role = $("nuRole").value, password = $("nuPass").value;
+  try {
+    const r = await fetch("/api/users", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username, role, password }) });
+    if (!r.ok) throw new Error((await r.json()).error || r.status);
+    toast("User created", "ok"); renderSettings();
+  } catch (e) { toast("Failed: " + e.message, "warn"); }
+}
+
+(async () => { await initAuth(); loadState(); })();
+</script>
+</body>
+</html>

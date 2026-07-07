@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DockFleet — Sign in</title>
+<style>
+  :root { --bg:#0d1117; --bg2:#161b22; --border:#2d3646; --text:#e6edf3; --muted:#8b98a9;
+    --accent2:#1f6feb; --green:#3fb950; --red:#f85149; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text); font:14px/1.5 -apple-system,"Segoe UI",Roboto,sans-serif;
+    min-height:100vh; display:flex; align-items:center; justify-content:center; }
+  .card { background:var(--bg2); border:1px solid var(--border); border-radius:14px; width:380px; max-width:92vw; padding:28px; }
+  .logo { display:flex; align-items:center; gap:9px; font-weight:700; font-size:18px; margin-bottom:4px; }
+  .logo svg { width:28px; height:28px; }
+  .sub { color:var(--muted); font-size:13px; margin-bottom:20px; }
+  label { display:block; font-size:12px; color:var(--muted); margin:14px 0 5px; }
+  input { width:100%; background:var(--bg); border:1px solid var(--border); color:var(--text);
+    border-radius:8px; padding:9px 12px; font:inherit; outline:none; }
+  input:focus { border-color:var(--accent2); }
+  button { width:100%; margin-top:20px; background:var(--accent2); border:none; color:#fff; font:inherit;
+    font-weight:600; border-radius:8px; padding:10px; cursor:pointer; }
+  button:hover { background:#2a7aef; }
+  button:disabled { opacity:.6; cursor:default; }
+  .msg { margin-top:14px; font-size:13px; min-height:18px; }
+  .msg.err { color:var(--red); } .msg.ok { color:var(--green); }
+  .step { display:none; } .step.active { display:block; }
+  .mono { font-family:ui-monospace,Menlo,monospace; }
+  .secret { background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:10px;
+    font-family:ui-monospace,Menlo,monospace; font-size:13px; word-break:break-all; margin-top:6px; }
+  .hint { font-size:12px; color:var(--muted); margin-top:8px; }
+  .qr { display:block; margin:12px auto 0; background:#fff; padding:8px; border-radius:8px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">
+    <svg viewBox="0 0 24 24" fill="none"><rect x="2" y="11" width="4" height="4" rx="1" fill="#4da3ff"/><rect x="7" y="11" width="4" height="4" rx="1" fill="#4da3ff"/><rect x="12" y="11" width="4" height="4" rx="1" fill="#4da3ff"/><rect x="7" y="6" width="4" height="4" rx="1" fill="#1f6feb"/><rect x="12" y="6" width="4" height="4" rx="1" fill="#1f6feb"/><path d="M2 17c4 3 14 3 20-2" stroke="#4da3ff" stroke-width="1.6" stroke-linecap="round"/></svg>
+    DockFleet
+  </div>
+
+  <!-- Step 1: password -->
+  <div class="step active" id="stepLogin">
+    <div class="sub">Sign in to manage your Docker fleet</div>
+    <form onsubmit="doLogin(event)">
+      <label>Username</label>
+      <input id="username" autocomplete="username" autofocus>
+      <label>Password</label>
+      <input id="password" type="password" autocomplete="current-password">
+      <button type="submit" id="loginBtn">Sign in</button>
+    </form>
+  </div>
+
+  <!-- Step 2: MFA code -->
+  <div class="step" id="stepMfa">
+    <div class="sub">Enter the 6-digit code from your authenticator app</div>
+    <form onsubmit="doMfa(event)">
+      <label>Authentication code</label>
+      <input id="mfaCode" class="mono" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000">
+      <button type="submit">Verify</button>
+    </form>
+  </div>
+
+  <!-- Step 3: forced password change -->
+  <div class="step" id="stepPw">
+    <div class="sub">Set a new password to continue (min 12 chars, mixed case + number)</div>
+    <form onsubmit="doChangePw(event)">
+      <label>Current password</label>
+      <input id="curPw" type="password" autocomplete="current-password">
+      <label>New password</label>
+      <input id="newPw" type="password" autocomplete="new-password">
+      <button type="submit">Update password</button>
+    </form>
+  </div>
+
+  <!-- Step 4: MFA enrollment -->
+  <div class="step" id="stepEnroll">
+    <div class="sub">Protect your account with multi-factor authentication (required)</div>
+    <div class="hint">In Google Authenticator / Authy, choose “add account → enter key” and type this setup key (Time-based):</div>
+    <div class="secret" id="secret"></div>
+    <form onsubmit="doEnroll(event)">
+      <label>Enter the 6-digit code to confirm</label>
+      <input id="enrollCode" class="mono" inputmode="numeric" maxlength="6" placeholder="000000">
+      <button type="submit">Enable MFA</button>
+    </form>
+  </div>
+
+  <div class="msg" id="msg"></div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+function show(step) { document.querySelectorAll(".step").forEach((s) => s.classList.remove("active")); $(step).classList.add("active"); $("msg").textContent = ""; }
+function err(m) { const el = $("msg"); el.className = "msg err"; el.textContent = m; }
+function ok(m) { const el = $("msg"); el.className = "msg ok"; el.textContent = m; }
+async function api(path, body) {
+  const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || ("error " + r.status));
+  return j;
+}
+
+// after any successful auth step, decide where to go next
+async function proceed() {
+  const me = await fetch("/api/auth/me").then((r) => r.json());
+  if (me.mfaPending) return show("stepMfa");
+  if (me.mustChangePassword) return show("stepPw");
+  if (!me.mfaEnabled) { await beginEnroll(); return; }
+  location.href = "/";
+}
+
+async function doLogin(e) {
+  e.preventDefault();
+  $("loginBtn").disabled = true;
+  try {
+    const j = await api("/api/auth/login", { username: $("username").value, password: $("password").value });
+    if (j.mfaRequired) return show("stepMfa"), $("mfaCode").focus();
+    if (j.mustChangePassword) return show("stepPw"), $("curPw").focus();
+    if (j.mfaSetupRequired) return beginEnroll();
+    location.href = "/";
+  } catch (ex) { err(ex.message); }
+  finally { $("loginBtn").disabled = false; }
+}
+
+async function doMfa(e) {
+  e.preventDefault();
+  try { await api("/api/auth/mfa", { token: $("mfaCode").value }); await proceed(); }
+  catch (ex) { err(ex.message); }
+}
+
+async function doChangePw(e) {
+  e.preventDefault();
+  try { await api("/api/auth/password", { current: $("curPw").value, next: $("newPw").value }); ok("Password updated"); await proceed(); }
+  catch (ex) { err(ex.message); }
+}
+
+async function beginEnroll() {
+  show("stepEnroll");
+  try {
+    const j = await api("/api/auth/mfa/setup", {});
+    $("secret").textContent = j.secret;
+    $("enrollCode").focus();
+  } catch (ex) { err(ex.message); }
+}
+
+async function doEnroll(e) {
+  e.preventDefault();
+  try { await api("/api/auth/mfa/enable", { token: $("enrollCode").value }); ok("MFA enabled"); setTimeout(() => (location.href = "/"), 500); }
+  catch (ex) { err(ex.message); }
+}
+</script>
+</body>
+</html>
