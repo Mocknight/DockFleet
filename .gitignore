@@ -1,0 +1,14 @@
+# Secrets & runtime state — never commit
+.env
+.env.*
+data/
+*.key
+*.crt
+
+# Nested clone (accidental duplicate of this repo)
+DockFleet/
+
+# OS / editor cruft
+.DS_Store
+node_modules/
+*.log

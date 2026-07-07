@@ -8,9 +8,14 @@ Zero dependencies — plain Node.js (>= 18) for both the server and the agent.
 
 Agents connect **outbound only** to the central server. No inbound ports or exposed Docker daemons on managed hosts.
 
-<img width="734" height="391" alt="DockFleetArch" src="https://github.com/user-attachments/assets/12c48a00-484e-4264-87dd-16668ad75100" />
-
-
+```
+┌─────────────┐   HTTPS (poll + report)   ┌──────────────────┐
+│  dashboard   │ ◄──────────────────────── │  agent (host A)  │──► docker.sock
+│  + server.js │ ◄──────────────────────── │  agent (host B)  │──► docker.sock
+└─────────────┘                            └──────────────────┘
+       │
+       └──► registries (Docker Hub / GHCR / any v2) — digest checks, no pulls
+```
 
 Each agent report includes: containers (state, uptime, CPU/mem, image digest), host CPU/mem, firewall status, and open ports. The response carries any queued commands (start / stop / restart / update), which the agent executes against the local Docker API. `update` = pull image → recreate container with identical config.
 

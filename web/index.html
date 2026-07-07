@@ -68,6 +68,20 @@
     font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
     color: var(--muted); padding: 0 8px 8px;
   }
+  /* sidebar collapse */
+  #sidebarToggle { font-size: 18px; margin-right: 4px; }
+  body.sidebar-collapsed aside { display: none; }
+  /* nav items */
+  .nav-item { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: 8px;
+    cursor: pointer; font-size: 13px; font-weight: 600; margin-bottom: 2px; border: 1px solid transparent; }
+  .nav-item:hover { background: var(--bg3); }
+  .nav-item.active { background: var(--bg3); border-color: var(--border); color: var(--accent); }
+  .nav-ic { width: 16px; text-align: center; color: var(--muted); }
+  .nav-item.active .nav-ic { color: var(--accent); }
+  .nav-count { margin-left: auto; font-size: 11px; color: var(--muted); font-weight: 500; }
+  .group-label { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+  .group-label .caret { transition: transform .15s; font-size: 9px; }
+  .group-label.collapsed .caret { transform: rotate(-90deg); }
   .server-item {
     padding: 9px 10px; border-radius: 8px; cursor: pointer; margin-bottom: 3px;
     border: 1px solid transparent;
@@ -105,6 +119,8 @@
     background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
     padding: 14px 16px;
   }
+  .card.clickable { cursor: pointer; transition: border-color .15s, background .15s; }
+  .card.clickable:hover { border-color: var(--accent2); background: #1a212e; }
   .card .label { font-size: 12px; color: var(--muted); }
   .card .value { font-size: 26px; font-weight: 700; margin-top: 2px; }
   .card .value.green { color: var(--green); } .card .value.yellow { color: var(--yellow); }
@@ -135,6 +151,15 @@
   .chip .via { color: var(--accent); }
   .chip .proto { color: var(--muted); }
   .chip.host { border-style: dashed; }
+  .infographic { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; padding: 14px 4px 18px;
+    margin-bottom: 6px; border-bottom: 1px solid var(--border); }
+  .ig-cell { text-align: center; }
+  .ig-label { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .ig-sub { font-size: 10px; color: var(--muted); }
+  .ig-stats { display: grid; grid-template-columns: repeat(2, auto); gap: 6px 22px; margin-left: 6px; }
+  .ig-stat-v { font-size: 20px; font-weight: 700; }
+  .ig-stat-v.green { color: var(--green); } .ig-stat-v.yellow { color: var(--yellow); }
+  .ig-stat-l { font-size: 11px; color: var(--muted); }
   .sysinfo { display: flex; flex-direction: column; gap: 3px; max-width: 640px; }
   .sysrow { display: flex; gap: 12px; font-size: 13px; padding: 3px 0; border-bottom: 1px solid rgba(45,54,70,.5); }
   .sysrow .sk { color: var(--muted); min-width: 130px; }
@@ -277,6 +302,7 @@
 <body>
 
 <header>
+  <button id="sidebarToggle" class="icon-btn" title="Toggle sidebar" onclick="toggleSidebar()">☰</button>
   <div class="logo">
     <svg viewBox="0 0 24 24" fill="none"><rect x="2" y="11" width="4" height="4" rx="1" fill="#4da3ff"/><rect x="7" y="11" width="4" height="4" rx="1" fill="#4da3ff"/><rect x="12" y="11" width="4" height="4" rx="1" fill="#4da3ff"/><rect x="7" y="6" width="4" height="4" rx="1" fill="#1f6feb"/><rect x="12" y="6" width="4" height="4" rx="1" fill="#1f6feb"/><path d="M2 17c4 3 14 3 20-2" stroke="#4da3ff" stroke-width="1.6" stroke-linecap="round"/></svg>
     DockFleet
@@ -294,7 +320,13 @@
 
 <main>
   <aside>
-    <h3>Servers</h3>
+    <h3>Views</h3>
+    <div class="nav">
+      <div class="nav-item" id="navServers" onclick="setView('overview')"><span class="nav-ic">▦</span> All servers <span class="nav-count" id="navServersCount"></span></div>
+      <div class="nav-item" id="navContainers" onclick="setView('containers')"><span class="nav-ic">◫</span> All containers <span class="nav-count" id="navContainersCount"></span></div>
+      <div class="nav-item" id="navPorts" onclick="setView('ports')"><span class="nav-ic">⇄</span> All ports <span class="nav-count" id="navPortsCount"></span></div>
+    </div>
+    <h3 style="margin-top:14px">Servers</h3>
     <div id="serverList"></div>
     <div id="manageBar">
       <span id="selCount" class="muted">0 selected</span>
@@ -312,8 +344,11 @@
 
     <div class="panel" id="serverPanel" style="display:none"></div>
 
+    <div id="containersSection">
     <div class="toolbar">
       <h2 id="viewTitle">All containers</h2>
+      <span style="flex:1"></span>
+      <button class="primary hide-viewer" id="updateAllBtn" onclick="updateAllContainers()" style="display:none">⬆ Update all</button>
       <label class="toggle"><input type="checkbox" id="updatesOnly"> Updates available only</label>
       <select id="stateFilter">
         <option value="">All states</option>
@@ -334,7 +369,19 @@
         <tbody id="tbody"></tbody>
       </table>
     </div>
+    </div>
 
+    <div id="portsSection" style="display:none">
+      <div class="toolbar"><h2>All ports</h2><span id="portsMeta" class="muted"></span></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Port</th><th>Proto</th><th>Server</th><th>Source</th><th>Via / container</th></tr></thead>
+          <tbody id="portsBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="backupsSection">
     <div class="toolbar" style="margin-top:26px">
       <h2 id="backupTitle">System backups</h2>
       <span id="backupMeta" class="muted"></span>
@@ -350,6 +397,7 @@
         </thead>
         <tbody id="backupBody"></tbody>
       </table>
+    </div>
     </div>
   </div>
 </main>
@@ -509,8 +557,49 @@ const MOCK = {
 
 let state = { servers: [] };
 let selectedServer = null;   // null = all servers
+let view = "overview";       // when no server selected: overview | containers | ports
 let live = false;            // true when a real backend is reachable
 let pollTimer = null;
+
+function toggleSidebar() {
+  document.body.classList.toggle("sidebar-collapsed");
+  try { localStorage.setItem("df-sidebar", document.body.classList.contains("sidebar-collapsed") ? "1" : "0"); } catch {}
+}
+function setView(v) { selectedServer = null; view = v; render(); }
+
+function showSections() {
+  const onServer = !!selectedServer;
+  const showContainers = onServer || view === "overview" || view === "containers";
+  const showBackups = onServer || view === "overview";
+  const showPorts = !onServer && view === "ports";
+  $("containersSection").style.display = showContainers ? "" : "none";
+  $("backupsSection").style.display = showBackups ? "" : "none";
+  $("portsSection").style.display = showPorts ? "" : "none";
+  $("cards").style.display = onServer ? "none" : "";
+  // nav active state
+  $("navServers").classList.toggle("active", !onServer && view === "overview");
+  $("navContainers").classList.toggle("active", !onServer && view === "containers");
+  $("navPorts").classList.toggle("active", !onServer && view === "ports");
+}
+
+function renderPorts() {
+  const rows = [];
+  for (const s of state.servers) {
+    for (const p of s.ports || []) rows.push({ ...p, server: s.name });
+  }
+  rows.sort((a, b) => a.port - b.port || a.server.localeCompare(b.server));
+  const q = $("search").value.toLowerCase();
+  const filtered = rows.filter((r) => !q || (r.port + r.proto + r.server + (r.via || "")).toLowerCase().includes(q));
+  $("portsMeta").textContent = filtered.length + " open port(s) across " + state.servers.length + " server(s)";
+  $("portsBody").innerHTML = filtered.length
+    ? filtered.map((r) => `<tr class="row">
+        <td class="c-name">${r.port}</td>
+        <td class="muted">${esc(r.proto)}</td>
+        <td>${esc(r.server)}</td>
+        <td><span class="badge ${r.source === "docker" ? "running" : "unknown"}">${esc(r.source)}</span></td>
+        <td class="muted">${esc(r.via || "—")}</td></tr>`).join("")
+    : `<tr><td colspan="5" class="empty">No open ports reported.</td></tr>`;
+}
 let me = { role: "admin" };  // current user; overwritten by /api/auth/me when live
 
 async function initAuth() {
@@ -531,6 +620,7 @@ document.addEventListener("DOMContentLoaded", () => {
     location.href = "/login";
   });
   $("settingsBtn").addEventListener("click", openSettings);
+  try { if (localStorage.getItem("df-sidebar") === "1") document.body.classList.add("sidebar-collapsed"); } catch {}
 });
 
 async function loadState() {
@@ -569,10 +659,21 @@ function toast(msg, cls = "") {
 /* ---------------- Rendering ---------------- */
 function render() {
   renderSidebar();
+  renderNav();
+  showSections();
   renderCards();
   renderServerPanel();
   renderTable();
   renderBackups();
+  renderPorts();
+}
+
+function renderNav() {
+  const cs = allContainers();
+  const ports = state.servers.reduce((n, s) => n + (s.ports || []).length, 0);
+  $("navServersCount").textContent = state.servers.length;
+  $("navContainersCount").textContent = cs.length;
+  $("navPortsCount").textContent = ports;
 }
 
 function backupServers() {
@@ -726,6 +827,71 @@ async function saveSched() {
   } catch (e) { toast("Failed: " + e.message, "warn"); }
 }
 
+/* ---- server infographic (inline SVG, CSP-safe) ---- */
+function gauge(pct, label, sub) {
+  pct = Math.max(0, Math.min(100, pct || 0));
+  const R = 34, C = Math.PI * R;                 // semicircle circumference
+  const off = C * (1 - pct / 100);
+  const col = pct > 85 ? "var(--red)" : pct > 65 ? "var(--yellow)" : "var(--green)";
+  return `<div class="ig-cell">
+    <svg viewBox="0 0 90 56" width="90" height="56">
+      <path d="M9 50 A34 34 0 0 1 81 50" fill="none" stroke="var(--bg3)" stroke-width="9" stroke-linecap="round"/>
+      <path d="M9 50 A34 34 0 0 1 81 50" fill="none" stroke="${col}" stroke-width="9" stroke-linecap="round"
+        stroke-dasharray="${C}" stroke-dashoffset="${off}"/>
+      <text x="45" y="46" text-anchor="middle" fill="var(--text)" font-size="15" font-weight="700">${Math.round(pct)}%</text>
+    </svg>
+    <div class="ig-label">${label}</div>${sub ? `<div class="ig-sub">${sub}</div>` : ""}
+  </div>`;
+}
+function donut(parts, centerLabel, centerSub) {
+  const total = parts.reduce((n, p) => n + p.value, 0) || 1;
+  const R = 26, C = 2 * Math.PI * R;
+  let acc = 0, segs = "";
+  for (const p of parts) {
+    if (!p.value) continue;
+    const len = (p.value / total) * C;
+    segs += `<circle cx="34" cy="34" r="${R}" fill="none" stroke="${p.color}" stroke-width="10"
+      stroke-dasharray="${len} ${C - len}" stroke-dashoffset="${-acc}" transform="rotate(-90 34 34)"/>`;
+    acc += len;
+  }
+  return `<div class="ig-cell">
+    <svg viewBox="0 0 68 68" width="68" height="68">
+      <circle cx="34" cy="34" r="${R}" fill="none" stroke="var(--bg3)" stroke-width="10"/>
+      ${segs}
+      <text x="34" y="33" text-anchor="middle" fill="var(--text)" font-size="15" font-weight="700">${centerLabel}</text>
+      <text x="34" y="45" text-anchor="middle" fill="var(--muted)" font-size="8">${centerSub}</text>
+    </svg>
+    <div class="ig-label">Containers</div>
+  </div>`;
+}
+function statTile(value, label, cls) {
+  return `<div class="ig-stat"><div class="ig-stat-v ${cls || ""}">${value}</div><div class="ig-stat-l">${label}</div></div>`;
+}
+function serverInfographic(s) {
+  const cs = s.containers || [];
+  const running = cs.filter((c) => c.state === "running").length;
+  const exited = cs.filter((c) => c.state === "exited").length;
+  const paused = cs.filter((c) => c.state === "paused").length;
+  const updates = cs.filter((c) => c.update === "outdated").length;
+  const osU = s.osUpdates && s.osUpdates.packages > 0 ? s.osUpdates.packages : 0;
+  const snaps = (s.backups && s.backups.snapshots && s.backups.snapshots.length) || 0;
+  const worstDisk = Math.max(0, ...((s.mounts || []).map((m) => m.usedPct)));
+  return `<div class="infographic">
+    ${gauge(s.cpu, "CPU")}
+    ${gauge(s.mem, "Memory")}
+    ${gauge(worstDisk, "Disk", (s.mounts || []).length + " mount(s)")}
+    ${donut(
+      [{ value: running, color: "var(--green)" }, { value: paused, color: "var(--yellow)" }, { value: exited, color: "var(--red)" }],
+      String(cs.length), running + " up")}
+    <div class="ig-stats">
+      ${statTile(running + "/" + cs.length, "running", running === cs.length ? "green" : "")}
+      ${statTile(updates, "image updates", updates ? "yellow" : "green")}
+      ${statTile(osU || "0", "OS updates", osU ? "yellow" : "green")}
+      ${statTile(snaps, "snapshots")}
+    </div>
+  </div>`;
+}
+
 function renderServerPanel() {
   const panel = $("serverPanel");
   const s = selectedServer && state.servers.find((x) => x.id === selectedServer);
@@ -762,6 +928,7 @@ function renderServerPanel() {
       ${os && os.packages > 0 ? `<button onclick="osUpdate('${s.id}')" title="Create a restore point, then upgrade all OS packages">⬆ Update OS</button>` : ""}
       <button class="danger" onclick="removeServer('${s.id}')">Remove server</button>
     </div>
+    ${serverInfographic(s)}
     <h4>System</h4>
     ${(() => {
       const info = s.info || {};
@@ -852,18 +1019,15 @@ function renderSidebar() {
   }
   const orderedGroups = [...groups.keys()].sort((a, b) => (a === "" ? 1 : b === "" ? -1 : a.localeCompare(b)));
 
-  let html = manageMode ? "" :
-    `<div class="server-item ${selectedServer === null ? "active" : ""}" onclick="selectServer(null)">
-       <div class="server-top"><span class="dot online"></span><span class="server-name">All servers</span>
-       <span class="server-count" title="${state.servers.length} server(s) · ${allContainers().length} container(s)">${state.servers.length}</span></div>
-     </div>`;
-
+  let html = "";
   for (const g of orderedGroups) {
+    const collapsed = collapsedGroups.has(g);
     if (g !== "" || orderedGroups.length > 1)
-      html += `<div class="group-label">${g === "" ? "Ungrouped" : esc(g)}</div>`;
-    html += groups.get(g).map(serverItemHtml).join("");
+      html += `<div class="group-label ${collapsed ? "collapsed" : ""}" onclick="toggleGroup('${esc(g).replace(/'/g,"\\'")}')">
+        <span class="caret">▼</span> ${g === "" ? "Ungrouped" : esc(g)} <span class="nav-count">${groups.get(g).length}</span></div>`;
+    if (!collapsed) html += groups.get(g).map(serverItemHtml).join("");
   }
-  list.innerHTML = html;
+  list.innerHTML = html || '<div class="muted" style="padding:8px;font-size:12px">No servers yet.</div>';
 
   // manage bar
   const bar = $("manageBar");
@@ -875,6 +1039,14 @@ function renderSidebar() {
     bar.style.display = "none";
   }
   $("manageToggle").textContent = manageMode ? "Done" : "Manage servers";
+}
+
+let collapsedGroups = new Set();
+try { collapsedGroups = new Set(JSON.parse(localStorage.getItem("df-collapsed-groups") || "[]")); } catch {}
+function toggleGroup(g) {
+  if (collapsedGroups.has(g)) collapsedGroups.delete(g); else collapsedGroups.add(g);
+  try { localStorage.setItem("df-collapsed-groups", JSON.stringify([...collapsedGroups])); } catch {}
+  renderSidebar();
 }
 
 function toggleManage() {
@@ -930,14 +1102,23 @@ function renderCards() {
   const updates = cs.filter((c) => c.update === "outdated").length;
   const offline = state.servers.length - online;
   $("cards").innerHTML = `
-    <div class="card"><div class="label">Servers online</div>
+    <div class="card clickable" onclick="cardFilter('servers')" title="View all servers"><div class="label">Servers online</div>
       <div class="value ${offline ? "yellow" : "green"}">${online}<span class="muted" style="font-size:14px"> / ${state.servers.length}</span></div></div>
-    <div class="card"><div class="label">Containers running</div>
+    <div class="card clickable" onclick="cardFilter('running')" title="Show running containers"><div class="label">Containers running</div>
       <div class="value">${running}<span class="muted" style="font-size:14px"> / ${cs.length}</span></div></div>
-    <div class="card"><div class="label">Updates available</div>
+    <div class="card clickable" onclick="cardFilter('updates')" title="Show containers with updates"><div class="label">Updates available</div>
       <div class="value ${updates ? "yellow" : "green"}">${updates}</div></div>
-    <div class="card"><div class="label">Images tracked</div>
+    <div class="card clickable" onclick="cardFilter('images')" title="Show all containers"><div class="label">Images tracked</div>
       <div class="value">${new Set(cs.map((c) => c.image)).size}</div></div>`;
+}
+
+function cardFilter(kind) {
+  selectedServer = null;
+  if (kind === "servers") { view = "overview"; }
+  else if (kind === "running") { view = "containers"; $("stateFilter").value = "running"; $("updatesOnly").checked = false; }
+  else if (kind === "updates") { view = "containers"; $("stateFilter").value = ""; $("updatesOnly").checked = true; }
+  else { view = "containers"; $("stateFilter").value = ""; $("updatesOnly").checked = false; }
+  render();
 }
 
 function renderTable() {
@@ -956,6 +1137,13 @@ function renderTable() {
   $("viewTitle").textContent = selectedServer
     ? state.servers.find((s) => s.id === selectedServer).name + " — Docker containers"
     : "Docker containers";
+
+  const nOutdated = outdatedInScope().length;
+  const uaBtn = $("updateAllBtn");
+  if (uaBtn) {
+    uaBtn.style.display = nOutdated ? "" : "none";
+    uaBtn.textContent = `⬆ Update all (${nOutdated})`;
+  }
 
   if (!rows.length) {
     $("tbody").innerHTML = `<tr><td colspan="8" class="empty">No containers match.</td></tr>`;
@@ -1035,6 +1223,29 @@ async function act(action, id) {
   if (action === "update") { c.update = "uptodate"; c.tag = c.latest && !c.latest.includes("digest") ? c.latest : c.tag; delete c.latest; c.uptime = "0m"; }
   toast(`${action} → ${c.name} on ${s.name} (demo)`, action === "update" ? "warn" : "ok");
   render();
+}
+
+function outdatedInScope() {
+  return allContainers().filter((c) =>
+    c.update === "outdated" && (!selectedServer || c.server.id === selectedServer));
+}
+async function updateAllContainers() {
+  const list = outdatedInScope();
+  if (!list.length) { toast("No containers need updating", "ok"); return; }
+  const scope = selectedServer ? state.servers.find((s) => s.id === selectedServer).name : "all servers";
+  if (!confirm(`Update ${list.length} container(s) on ${scope}?\n\nEach is pulled to its newest image and recreated. Brief downtime per container.`)) return;
+  if (!live) { list.forEach((c) => act("update", c.id)); return; }
+  let ok = 0;
+  for (const c of list) {
+    try {
+      const r = await fetch("/api/containers/action", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ serverId: c.server.id, containerId: c.id, action: "update" }),
+      });
+      if (r.ok) ok++;
+    } catch {}
+  }
+  toast(`Queued updates for ${ok}/${list.length} container(s) — watch each server's activity`, "warn");
 }
 
 $("checkUpdates").addEventListener("click", async () => {
@@ -1351,7 +1562,7 @@ async function removeServer(id) {
   toast(`${s.name} removed`, "ok");
   if (live) loadState(); else render();
 }
-$("search").addEventListener("input", renderTable);
+$("search").addEventListener("input", () => { renderTable(); renderPorts(); });
 $("stateFilter").addEventListener("change", renderTable);
 $("updatesOnly").addEventListener("change", renderTable);
 
