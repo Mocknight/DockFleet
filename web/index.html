@@ -1061,7 +1061,7 @@ function renderServerPanel() {
     <div class="mounts">${s.mounts.map((m) => `
       <div class="mount">
         <span class="mount-path">${esc(m.mount)}</span>
-        <span class="muted">${esc(m.device)} · ${m.sizeGb} GB</span>
+        <span class="muted">${esc(m.device)}${m.type ? " · " + esc(m.type) : ""} · ${m.sizeGb} GB</span>
         <span class="bar mount-bar"><i style="width:${m.usedPct}%" class="${m.usedPct > 85 ? "hot" : ""}"></i></span>
         <span class="mount-pct ${m.usedPct > 85 ? "hot-txt" : "muted"}">${m.usedPct}%</span>
       </div>`).join("")}</div>` : ""}

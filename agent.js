@@ -539,42 +539,58 @@ function hostInterfaces() {
   return out.slice(0, 16);
 }
 
+// Pseudo/virtual filesystems we never want to list as "disks".
+const PSEUDO_FS = new Set([
+  "tmpfs", "devtmpfs", "proc", "sysfs", "cgroup", "cgroup2", "overlay", "squashfs",
+  "ramfs", "mqueue", "debugfs", "tracefs", "devpts", "efivarfs", "autofs", "binfmt_misc",
+  "configfs", "fusectl", "pstore", "bpf", "nsfs", "securityfs", "hugetlbfs", "rpc_pipefs",
+  "fuse.gvfsd-fuse", "fuse.portal",
+]);
+function skipMount(mp) {
+  return mp.startsWith("/var/lib/docker") || mp.startsWith("/snap/") || mp === "/boot/efi"
+    || mp.startsWith("/proc") || mp.startsWith("/sys") || mp.startsWith("/dev")
+    || mp.startsWith("/run");
+}
+
 function hostMounts() {
   const mounts = [];
   const seen = new Set();
-  const skip = (mp) => mp.startsWith("/var/lib/docker") || mp.startsWith("/snap") || mp.startsWith("/boot/efi");
   if (HOST_MODE === "nsenter" || HOST_MODE === "direct") {
     try {
-      for (const l of hostExec("df -P -k").split("\n").slice(1)) {
+      // -T adds the fs Type column so we can include network/fuse mounts (nfs, cifs, zfs, rclone…)
+      for (const l of hostExec("df -P -k -T").split("\n").slice(1)) {
         const f = l.trim().split(/\s+/);
-        if (f.length < 6 || !f[0].startsWith("/dev/")) continue;
-        if (skip(f[5]) || seen.has(f[0])) continue;
-        seen.add(f[0]);
-        mounts.push({ device: f[0], mount: f[5], sizeGb: +(f[1] / 1048576).toFixed(1), usedPct: parseInt(f[4]) || 0 });
+        if (f.length < 7) continue;
+        const device = f[0], type = f[1], blocks = f[2], cap = f[5];
+        const mount = f.slice(6).join(" ");
+        if (PSEUDO_FS.has(type) || skipMount(mount) || seen.has(mount)) continue;
+        seen.add(mount);
+        mounts.push({ device, type, mount, sizeGb: +(blocks / 1048576).toFixed(1), usedPct: parseInt(cap) || 0 });
       }
+      if (mounts.length) return mounts.slice(0, 40);
     } catch {}
   }
-  if (!mounts.length) {
-    // fallback: host mount table (via --pid=host) + statfs through the /host mount
-    try {
-      for (const l of fs.readFileSync("/proc/1/mounts", "utf8").split("\n")) {
-        const f = l.split(" ");
-        if (f.length < 3 || !f[0].startsWith("/dev/")) continue;
-        if (skip(f[1]) || seen.has(f[0])) continue;
-        try {
-          const st = fs.statfsSync(HAS_HOST ? "/host" + (f[1] === "/" ? "" : f[1]) : f[1]);
-          const size = st.blocks * st.bsize, free = st.bavail * st.bsize;
-          seen.add(f[0]);
-          mounts.push({
-            device: f[0], mount: f[1],
-            sizeGb: +(size / 1073741824).toFixed(1),
-            usedPct: size ? Math.round((1 - free / size) * 100) : 0,
-          });
-        } catch {}
-      }
-    } catch {}
-  }
-  return mounts.slice(0, 20);
+  // fallback: host mount table (via --pid=host) + statfs through the /host mount
+  try {
+    for (const l of fs.readFileSync("/proc/1/mounts", "utf8").split("\n")) {
+      const f = l.split(" ");
+      if (f.length < 3) continue;
+      const device = f[0], mount = f[1].replace(/\\040/g, " "), type = f[2];
+      if (PSEUDO_FS.has(type) || skipMount(mount) || seen.has(mount)) continue;
+      try {
+        const st = fs.statfsSync(HAS_HOST ? "/host" + (mount === "/" ? "" : mount) : mount);
+        const size = st.blocks * st.bsize, free = st.bavail * st.bsize;
+        if (!size) continue;
+        seen.add(mount);
+        mounts.push({
+          device, type, mount,
+          sizeGb: +(size / 1073741824).toFixed(1),
+          usedPct: Math.round((1 - free / size) * 100),
+        });
+      } catch {}
+    }
+  } catch {}
+  return mounts.slice(0, 40);
 }
 
 /* ---------------- host metrics ---------------- */

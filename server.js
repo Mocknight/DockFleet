@@ -315,8 +315,9 @@ const routes = {
         }
       : null;
     srv.mounts = Array.isArray(b.mounts)
-      ? b.mounts.slice(0, 20).map((m) => ({
+      ? b.mounts.slice(0, 40).map((m) => ({
           device: String(m.device || ""), mount: String(m.mount || ""),
+          type: String(m.type || ""),
           sizeGb: Math.max(0, +m.sizeGb || 0),
           usedPct: Math.max(0, Math.min(100, +m.usedPct || 0)),
         }))
